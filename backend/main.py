@@ -28,9 +28,12 @@ if str(ROOT) not in sys.path:
 
 from backend.config import (  # noqa: E402
     AUDIO_DIR,
+    CAPTIONS_DIR,
+    CAROUSELS_DIR,
+    DATA_DIR,
     JOB_QUEUE_MAX_WORKERS,
     LOGOS_DIR,
-    CAROUSELS_DIR,
+    OUTPUT_DIR,
     SESSION_MAX_AGE_SEC,
     STUDIO_SECRET_KEY,
     UPLOADS_DIR,
@@ -55,6 +58,21 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("vv-luxe")
+
+
+def ensure_runtime_directories() -> None:
+    """Create output, upload, and media directories before StaticFiles mounts."""
+    for path in (
+        DATA_DIR,
+        OUTPUT_DIR,
+        UPLOADS_DIR,
+        VIDEOS_DIR,
+        CAROUSELS_DIR,
+        CAPTIONS_DIR,
+        AUDIO_DIR,
+        LOGOS_DIR,
+    ):
+        path.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -173,6 +191,8 @@ app.include_router(upload.router)
 app.include_router(classify.router)
 app.include_router(render.router)
 app.include_router(captions.router)
+
+ensure_runtime_directories()
 
 app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 app.mount("/media/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
