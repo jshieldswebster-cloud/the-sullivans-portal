@@ -96,6 +96,7 @@ async def login_page(request: Request, home: bool = False):
     elif get_current_user(request):
         return RedirectResponse("/dashboard", status_code=302)
     return templates.TemplateResponse(
+        request,
         "login.html",
         {"request": request, "error": None, "brand_name": STUDIO_BRAND_NAME, "brand_tagline": STUDIO_TAGLINE},
     )
@@ -111,6 +112,7 @@ async def login_submit(
         login_user(request, username)
         return RedirectResponse("/dashboard", status_code=302)
     return templates.TemplateResponse(
+        request,
         "login.html",
         {"request": request, "error": "Invalid credentials. Please try again.", "brand_name": STUDIO_BRAND_NAME, "brand_tagline": STUDIO_TAGLINE},
         status_code=401,
@@ -135,6 +137,7 @@ async def dashboard(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         _page_ctx(
             request,
@@ -158,6 +161,7 @@ async def event_portal(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "event_portal.html",
         _page_ctx(request, auth, active="portal"),
     )
@@ -169,6 +173,7 @@ async def grid_preview_page(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "grid_preview.html",
         _page_ctx(request, auth, active="grid", categories=EVENT_CATEGORIES),
     )
@@ -183,6 +188,7 @@ def _feature_page(
     page_description: str,
 ):
     return templates.TemplateResponse(
+        request,
         "includes/page_shell.html",
         _page_ctx(
             request,
@@ -228,6 +234,7 @@ async def audio_library_page(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "audio_library.html",
         _page_ctx(request, auth, active="audio"),
     )
@@ -239,6 +246,7 @@ async def watermark_page(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "watermark.html",
         _page_ctx(
             request,
@@ -267,6 +275,7 @@ def _render_client_gallery(request: Request, *, error: str | None = None):
     events = svc.list_unlockable_events()
     preselect = request.query_params.get("event", "")
     return templates.TemplateResponse(
+        request,
         "client_gallery.html",
         _client_gallery_ctx(
             request,
@@ -328,6 +337,7 @@ async def tour_mode_page(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "tour_mode.html",
         _page_ctx(
             request,
@@ -345,6 +355,7 @@ async def vincent_studio_page(request: Request):
     if isinstance(auth, RedirectResponse):
         return auth
     return templates.TemplateResponse(
+        request,
         "vincent_studio.html",
         _page_ctx(request, auth, active="vincent", categories=EVENT_CATEGORIES),
     )
