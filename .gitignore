@@ -16,6 +16,7 @@ uploads/*
 !uploads/.gitkeep
 output/*
 !output/.gitkeep
+!output/videos/.gitkeep
 !output/debug/
 !output/debug/.gitkeep
 data/*.db
