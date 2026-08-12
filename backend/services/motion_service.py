@@ -135,8 +135,8 @@ class MotionService:
             flow_y += centered * push * 0.2
 
         yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-        map_x = np.clip(xx + flow_x, 0, w - 1)
-        map_y = np.clip(yy + flow_y, 0, h - 1)
+        map_x = np.ascontiguousarray(np.clip(xx + flow_x, 0, w - 1), dtype=np.float32)
+        map_y = np.ascontiguousarray(np.clip(yy + flow_y, 0, h - 1), dtype=np.float32)
         return map_x, map_y
 
     def _warp_depth_parallax(
@@ -152,6 +152,9 @@ class MotionService:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Depth-weighted remap for foreground with soft alpha."""
         map_x, map_y = self._depth_flow_field(depth, t=t, dx=dx, dy=dy, motion=motion)
+        alpha_map = alpha.astype(np.float32)
+        if alpha_map.ndim == 3:
+            alpha_map = alpha_map.squeeze(-1)
         warped = cv2.remap(
             layer,
             map_x,
@@ -160,7 +163,7 @@ class MotionService:
             borderMode=cv2.BORDER_REPLICATE,
         )
         alpha_warped = cv2.remap(
-            alpha,
+            alpha_map,
             map_x,
             map_y,
             interpolation=cv2.INTER_LINEAR,
