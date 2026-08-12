@@ -1,0 +1,33 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+frontend/dist/
+dist-electron/
+
+# Runtime data
+uploads/*
+!uploads/.gitkeep
+output/*
+!output/.gitkeep
+!output/debug/
+!output/debug/.gitkeep
+data/*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models cache (Hugging Face weights — root-level only)
+.cache/
+/models/
+
+# Env
+.env
+.env.local

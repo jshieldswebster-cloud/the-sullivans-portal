@@ -1,0 +1,60 @@
+{
+  "name": "vv-luxe-studio",
+  "version": "1.0.0",
+  "description": "Local AI desktop studio for VV LUXE venue content production",
+  "main": "electron/main.js",
+  "author": "VV LUXE",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:backend": ".venv/bin/python backend/main.py",
+    "dev:frontend": "vite --config frontend/vite.config.js",
+    "dev:electron": "wait-on http://127.0.0.1:5173 http://127.0.0.1:8765/api/health && electron .",
+    "build:frontend": "vite build --config frontend/vite.config.js",
+    "build": "npm run build:frontend",
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^8.2.2",
+    "electron": "^31.2.0",
+    "electron-builder": "^24.13.3",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "vite": "^5.3.4",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.vvluxe.studio",
+    "productName": "VV LUXE Studio",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.photography",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend"
+      }
+    ]
+  }
+}

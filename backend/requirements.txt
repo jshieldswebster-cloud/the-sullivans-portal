@@ -1,0 +1,29 @@
+# VV LUXE Studio — Python backend dependencies
+# Install: python -m venv .venv && source .venv/bin/activate && pip install -r backend/requirements.txt
+
+# Web API
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+httpx>=0.27.0
+pydantic>=2.7.0
+
+# ML / Vision (Apple Silicon MPS)
+torch>=2.3.0
+torchvision>=0.18.0
+transformers>=4.41.0
+accelerate>=0.30.0
+safetensors>=0.4.3
+pillow>=10.3.0
+
+# Depth & video pipeline
+opencv-python-headless>=4.9.0
+numpy>=1.26.0
+
+# Optional: Florence-2 requires timm
+timm>=0.9.16
+
+# Note: FFmpeg must be installed separately:
+#   brew install ffmpeg
+# Ollama must be installed and running locally:
+#   brew install ollama && ollama pull llama3:8b
