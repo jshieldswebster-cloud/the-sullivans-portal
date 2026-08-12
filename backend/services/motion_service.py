@@ -93,25 +93,13 @@ class MotionService:
     ) -> np.ndarray:
         """Uniform scale from optical center + translation — no perspective warp."""
         h, w = layer.shape[:2]
-        scaled_w, scaled_h = max(1, int(w * scale)), max(1, int(h * scale))
-        scaled = cv2.resize(layer, (scaled_w, scaled_h), interpolation=cv2.INTER_LANCZOS4)
-
-        cx, cy = scaled_w // 2, scaled_h // 2
-        x0, y0 = cx - w // 2 + dx, cy - h // 2 + dy
-        x1, y1 = x0 + w, y0 + h
-
-        canvas = np.zeros_like(layer)
-        src_x0, src_y0 = max(0, -x0), max(0, -y0)
-        src_x1, src_y1 = min(scaled_w, scaled_w - max(0, x1 - w)), min(
-            scaled_h, scaled_h - max(0, y1 - h)
+        center = (w / 2.0, h / 2.0)
+        M = cv2.getRotationMatrix2D(center, 0, scale)
+        M[0, 2] += dx
+        M[1, 2] += dy
+        return cv2.warpAffine(
+            layer, M, (w, h), borderMode=cv2.BORDER_REPLICATE
         )
-        dst_x0, dst_y0 = max(0, x0), max(0, y0)
-        dst_x1 = dst_x0 + (src_x1 - src_x0)
-        dst_y1 = dst_y0 + (src_y1 - src_y0)
-
-        if src_x1 > src_x0 and src_y1 > src_y0:
-            canvas[dst_y0:dst_y1, dst_x0:dst_x1] = scaled[src_y0:src_y1, src_x0:src_x1]
-        return canvas
 
     def _fit_9_16(self, frame: np.ndarray) -> np.ndarray:
         """Center-crop and resize to 1080×1920 vertical reel."""
