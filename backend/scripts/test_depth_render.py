@@ -20,7 +20,11 @@ sys.path.insert(0, str(ROOT))
 
 from backend.config import (  # noqa: E402
     DEBUG_DIR,
+    MOTION_MAX_DISPLACEMENT_PX,
+    MOTION_PUSH_IN_SCALE_END,
+    MOTION_PUSH_IN_SCALE_START,
     REEL_FPS,
+    REEL_PRESERVE_NATIVE_RES,
     VALID_MOTIONS,
     VIDEOS_DIR,
     ensure_directories,
@@ -73,6 +77,23 @@ def main() -> None:
         action="store_true",
         help="Fall back to software libx264 encoder",
     )
+    parser.add_argument(
+        "--max-displacement",
+        type=float,
+        default=MOTION_MAX_DISPLACEMENT_PX,
+        help=f"Max depth parallax displacement in px (default: {MOTION_MAX_DISPLACEMENT_PX})",
+    )
+    parser.add_argument(
+        "--scale-end",
+        type=float,
+        default=MOTION_PUSH_IN_SCALE_END,
+        help=f"Push-in end scale factor (default: {MOTION_PUSH_IN_SCALE_END})",
+    )
+    parser.add_argument(
+        "--downscale-1080",
+        action="store_true",
+        help="Force downscale to 1080x1920 instead of preserving native crop resolution",
+    )
     args = parser.parse_args()
 
     image = args.image.resolve()
@@ -86,7 +107,15 @@ def main() -> None:
 
     depth_engine = DepthEngine()
     motion = MotionService(
-        MotionParams(motion=args.motion, duration_sec=args.duration, fps=args.fps)
+        MotionParams(
+            motion=args.motion,
+            duration_sec=args.duration,
+            fps=args.fps,
+            max_displacement_px=args.max_displacement,
+            scale_start=MOTION_PUSH_IN_SCALE_START,
+            scale_end=args.scale_end,
+            preserve_native_res=not args.downscale_1080,
+        )
     )
     ffmpeg = FFmpegRenderer()
     pipeline = VideoRenderPipeline(
@@ -107,6 +136,8 @@ def main() -> None:
     print(f"  16-bit raw  → {args.depth_out.with_name(args.depth_out.stem + '_16bit.png')}", file=sys.stderr)
     print(f"  Depth range: min={layers.depth_normalized.min():.3f} max={layers.depth_normalized.max():.3f}", file=sys.stderr)
     print(f"  Foreground coverage: {layers.foreground_mask.mean():.1%}", file=sys.stderr)
+    print(f"  Max displacement: {args.max_displacement}px  scale: {MOTION_PUSH_IN_SCALE_START}→{args.scale_end}", file=sys.stderr)
+    print(f"  Native resolution: {not args.downscale_1080}", file=sys.stderr)
     print(f"  Depth inference: {depth_elapsed:.2f}s", file=sys.stderr)
 
     print(f"Synthesizing {args.duration}s @ {args.fps}fps motion={args.motion}...", file=sys.stderr)
@@ -116,6 +147,9 @@ def main() -> None:
     )
     motion_elapsed = time.perf_counter() - t1
     print(f"  {len(frames)} frames in {motion_elapsed:.2f}s", file=sys.stderr)
+    if frames:
+        fh, fw = frames[0].shape[:2]
+        print(f"  Output frame size: {fw}x{fh}", file=sys.stderr)
 
     print("Encoding with FFmpeg VideoToolbox...", file=sys.stderr)
     t2 = time.perf_counter()

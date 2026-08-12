@@ -17,7 +17,17 @@ import numpy as np
 import torch
 from PIL import Image
 
-from backend.config import DEPTH_MODEL_ID, get_device
+from backend.config import (
+    DEPTH_BILATERAL_D,
+    DEPTH_BILATERAL_SIGMA_COLOR,
+    DEPTH_BILATERAL_SIGMA_SPACE,
+    DEPTH_CLAMP_HIGH,
+    DEPTH_CLAMP_LOW,
+    DEPTH_GAUSSIAN_KSIZE,
+    DEPTH_MASK_BLUR_KSIZE,
+    DEPTH_MODEL_ID,
+    get_device,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +91,31 @@ class DepthEngine:
         depth_16 = (normalized * 65535.0).clip(0, 65535).astype(np.uint16)
         return depth_16, normalized.astype(np.float32)
 
+    def smooth_depth_map(self, depth: np.ndarray) -> np.ndarray:
+        """
+        Edge-preserving smooth + Gaussian pass to soften depth boundaries.
+
+        Reduces tearing around foreground objects (curtains, arches) during
+        parallax projection.
+        """
+        depth_f = depth.astype(np.float32)
+        depth_u8 = (depth_f * 255.0).clip(0, 255).astype(np.uint8)
+        sigma_color = max(DEPTH_BILATERAL_SIGMA_COLOR * 255.0, 1.0)
+        bilateral = cv2.bilateralFilter(
+            depth_u8,
+            DEPTH_BILATERAL_D,
+            sigma_color,
+            DEPTH_BILATERAL_SIGMA_SPACE,
+        )
+        k = DEPTH_GAUSSIAN_KSIZE | 1  # ensure odd
+        smoothed = cv2.GaussianBlur(bilateral.astype(np.float32) / 255.0, (k, k), 0)
+        return smoothed.clip(0.0, 1.0)
+
+    @staticmethod
+    def clamp_depth(depth: np.ndarray) -> np.ndarray:
+        """Clamp extreme depth values to prevent pixel stretching."""
+        return np.clip(depth, DEPTH_CLAMP_LOW, DEPTH_CLAMP_HIGH)
+
     def save_depth_preview(
         self,
         depth_16: np.ndarray,
@@ -128,11 +163,11 @@ class DepthEngine:
             image_bgr = cv2.resize(image_bgr, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
         if fg_threshold is None:
-            # Adaptive: decor/centerpieces tend to sit in upper depth quartile
             fg_threshold = float(np.percentile(depth, 58))
 
         fg_mask = (depth >= fg_threshold).astype(np.float32)
-        fg_mask = cv2.GaussianBlur(fg_mask, (17, 17), 0)
+        blur_k = DEPTH_MASK_BLUR_KSIZE | 1
+        fg_mask = cv2.GaussianBlur(fg_mask, (blur_k, blur_k), 0)
 
         # Clean speckle — keep contiguous decor regions
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
@@ -164,10 +199,10 @@ class DepthEngine:
 
         depth_16, normalized = self.generate_depth_map_16bit(image_path)
         depth = cv2.resize(normalized, (image_bgr.shape[1], image_bgr.shape[0]))
+        depth = self.smooth_depth_map(depth)
+        depth = self.clamp_depth(depth)
         layers = self.segment_layers(image_bgr, depth)
-        layers.depth_16bit = cv2.resize(
-            depth_16, (image_bgr.shape[1], image_bgr.shape[0]), interpolation=cv2.INTER_LINEAR
-        )
+        layers.depth_16bit = (depth * 65535.0).clip(0, 65535).astype(np.uint16)
         return layers
 
 

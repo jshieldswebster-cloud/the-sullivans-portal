@@ -114,12 +114,36 @@ REEL_FPS_HIGH = 60
 REEL_DURATION_SEC = 8.0
 
 # 2.5D motion presets (rigid architecture — affine only, no generative warp)
-MOTION_PUSH_IN_SCALE_START = 1.0
-MOTION_PUSH_IN_SCALE_END = 1.15
-MOTION_PAN_SHIFT_PX = 20
-MOTION_TILT_SHIFT_PX = 18
-MOTION_FG_PARALLAX_FACTOR = 0.35
+MOTION_PUSH_IN_SCALE_START = 1.05
+MOTION_PUSH_IN_SCALE_END = 1.08
+MOTION_PAN_SHIFT_PX = 16
+MOTION_TILT_SHIFT_PX = 14
+MOTION_FG_PARALLAX_FACTOR = 0.28
+MOTION_MAX_DISPLACEMENT_PX = 16
 MOTION_EASE = "ease_in_out_cubic"
+
+# Depth map smoothing & clamping (reduces tearing at fg/bg boundaries)
+DEPTH_BILATERAL_D = 9
+DEPTH_BILATERAL_SIGMA_COLOR = 0.06
+DEPTH_BILATERAL_SIGMA_SPACE = 9
+DEPTH_GAUSSIAN_KSIZE = 7
+DEPTH_CLAMP_LOW = 0.08
+DEPTH_CLAMP_HIGH = 0.90
+DEPTH_MASK_BLUR_KSIZE = 31
+
+# Encoding — high-bitrate VideoToolbox defaults
+FFMPEG_VIDEO_BITRATE = "18M"
+FFMPEG_VIDEO_MAXRATE = "22M"
+FFMPEG_VIDEO_BUFSIZE = "36M"
+FFMPEG_COLOR_FLAGS = [
+    "-color_primaries", "bt709",
+    "-color_trc", "bt709",
+    "-colorspace", "bt709",
+    "-color_range", "tv",
+]
+
+# When True, 9:16 crop keeps native pixel dimensions (no downscale to 1080×1920)
+REEL_PRESERVE_NATIVE_RES = True
 
 VALID_MOTIONS = ("push_in", "pan_left_right", "pan_left", "tilt_up")
 

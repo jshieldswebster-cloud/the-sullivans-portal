@@ -2,8 +2,8 @@
 2.5D parallax motion synthesizer.
 
 Procedural camera paths that respect rigid architecture — affine transforms
-only (scale, translate). Foreground decor receives depth-weighted parallax;
-background walls remain geometrically straight.
+only (scale, translate). Depth-weighted sub-pixel warping reduces tearing at
+foreground boundaries (curtains, arches, stanchions).
 """
 
 from __future__ import annotations
@@ -15,13 +15,17 @@ import cv2
 import numpy as np
 
 from backend.config import (
+    DEPTH_CLAMP_HIGH,
+    DEPTH_CLAMP_LOW,
     MOTION_FG_PARALLAX_FACTOR,
+    MOTION_MAX_DISPLACEMENT_PX,
     MOTION_PAN_SHIFT_PX,
     MOTION_PUSH_IN_SCALE_END,
     MOTION_PUSH_IN_SCALE_START,
     MOTION_TILT_SHIFT_PX,
     REEL_FPS,
     REEL_HEIGHT,
+    REEL_PRESERVE_NATIVE_RES,
     REEL_WIDTH,
 )
 from backend.models.depth_engine import LayerSegmentation
@@ -38,10 +42,12 @@ class MotionParams:
     scale_start: float = MOTION_PUSH_IN_SCALE_START
     scale_end: float = MOTION_PUSH_IN_SCALE_END
     fg_parallax_factor: float = MOTION_FG_PARALLAX_FACTOR
+    max_displacement_px: float = MOTION_MAX_DISPLACEMENT_PX
+    preserve_native_res: bool = REEL_PRESERVE_NATIVE_RES
 
 
 def ease_in_out_cubic(t: float) -> float:
-    """Smooth ease for stutter-free motion."""
+    """Smooth ease-in-out for stutter-free motion."""
     if t < 0.5:
         return 4.0 * t * t * t
     return 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0
@@ -59,27 +65,23 @@ class MotionService:
     def __init__(self, params: MotionParams | None = None) -> None:
         self.params = params or MotionParams()
 
-    def _camera_state(self, t: float, motion: str) -> tuple[float, int, int]:
-        """
-        Return (scale, dx, dy) for the background rigid camera.
-
-        t is eased progress in [0, 1].
-        """
+    def _camera_state(self, t: float, motion: str) -> tuple[float, float, float]:
+        """Return (scale, dx, dy) for the rigid background camera."""
         motion = _normalize_motion(motion)
         p = self.params
 
         if motion == "pan_left_right":
             scale = 1.0
-            dx = int((t - 0.5) * 2 * p.pan_shift_px)
-            dy = 0
+            dx = (t - 0.5) * 2.0 * p.pan_shift_px
+            dy = 0.0
         elif motion == "tilt_up":
             scale = 1.0
-            dx = 0
-            dy = int((0.5 - t) * 2 * MOTION_TILT_SHIFT_PX)
-        else:  # push_in
+            dx = 0.0
+            dy = (0.5 - t) * 2.0 * MOTION_TILT_SHIFT_PX
+        else:  # push_in — subtle ease-in-out zoom
             scale = p.scale_start + (p.scale_end - p.scale_start) * t
-            dx = 0
-            dy = 0
+            dx = 0.0
+            dy = 0.0
 
         return scale, dx, dy
 
@@ -88,8 +90,8 @@ class MotionService:
         layer: np.ndarray,
         *,
         scale: float,
-        dx: int,
-        dy: int,
+        dx: float,
+        dy: float,
     ) -> np.ndarray:
         """Uniform scale from optical center + translation — no perspective warp."""
         h, w = layer.shape[:2]
@@ -98,11 +100,77 @@ class MotionService:
         M[0, 2] += dx
         M[1, 2] += dy
         return cv2.warpAffine(
-            layer, M, (w, h), borderMode=cv2.BORDER_REPLICATE
+            layer, M, (w, h), flags=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REPLICATE
         )
 
+    def _depth_flow_field(
+        self,
+        depth: np.ndarray,
+        *,
+        t: float,
+        dx: float,
+        dy: float,
+        motion: str,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Build sub-pixel displacement maps from clamped, smoothed depth.
+
+        Displacement magnitude is capped by max_displacement_px.
+        """
+        p = self.params
+        h, w = depth.shape[:2]
+        depth_clamped = np.clip(depth, DEPTH_CLAMP_LOW, DEPTH_CLAMP_HIGH)
+        centered = (depth_clamped - 0.5) * 2.0
+
+        # Motion progress peaks mid-travel then returns — avoids edge stretch
+        motion_weight = np.sin(t * np.pi)
+        max_disp = p.max_displacement_px * motion_weight * p.fg_parallax_factor
+
+        flow_x = centered * max_disp + dx * p.fg_parallax_factor
+        flow_y = centered * max_disp * 0.35 + dy * p.fg_parallax_factor
+
+        if motion == "push_in":
+            push = (t - 0.5) * p.max_displacement_px * 0.25
+            flow_x += centered * push
+            flow_y += centered * push * 0.2
+
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        map_x = np.clip(xx + flow_x, 0, w - 1)
+        map_y = np.clip(yy + flow_y, 0, h - 1)
+        return map_x, map_y
+
+    def _warp_depth_parallax(
+        self,
+        layer: np.ndarray,
+        depth: np.ndarray,
+        alpha: np.ndarray,
+        *,
+        t: float,
+        dx: float,
+        dy: float,
+        motion: str,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Depth-weighted remap for foreground with soft alpha."""
+        map_x, map_y = self._depth_flow_field(depth, t=t, dx=dx, dy=dy, motion=motion)
+        warped = cv2.remap(
+            layer,
+            map_x,
+            map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+        alpha_warped = cv2.remap(
+            alpha,
+            map_x,
+            map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0,
+        )
+        return warped, alpha_warped
+
     def _fit_9_16(self, frame: np.ndarray) -> np.ndarray:
-        """Center-crop and resize to 1080×1920 vertical reel."""
+        """Center-crop to 9:16; preserve native resolution when configured."""
         h, w = frame.shape[:2]
         target_ratio = REEL_WIDTH / REEL_HEIGHT
         current_ratio = w / h
@@ -115,6 +183,12 @@ class MotionService:
             new_h = int(w / target_ratio)
             y0 = (h - new_h) // 2
             cropped = frame[y0 : y0 + new_h, :]
+
+        if self.params.preserve_native_res:
+            ch, cw = cropped.shape[:2]
+            cw -= cw % 2
+            ch -= ch % 2
+            return cropped[:ch, :cw]
 
         return cv2.resize(
             cropped, (REEL_WIDTH, REEL_HEIGHT), interpolation=cv2.INTER_LANCZOS4
@@ -132,7 +206,7 @@ class MotionService:
         Render a smooth 2.5D parallax frame sequence.
 
         Background: rigid affine camera path.
-        Foreground: depth-weighted parallax offset on decor elements.
+        Foreground: depth-weighted sub-pixel warp with soft alpha blending.
         """
         motion = _normalize_motion(motion or self.params.motion)
         duration = duration_sec if duration_sec is not None else self.params.duration_sec
@@ -141,8 +215,8 @@ class MotionService:
 
         background = layers.background_bgr
         foreground = layers.foreground_bgr
-        alpha = layers.foreground_alpha[..., None]
-        fg_mask = layers.foreground_mask
+        alpha = layers.foreground_alpha
+        depth = layers.depth_normalized
         p = self.params
 
         frames: list[np.ndarray] = []
@@ -151,40 +225,37 @@ class MotionService:
             t = ease_in_out_cubic(linear_t)
 
             scale, dx, dy = self._camera_state(t, motion)
-            bg_frame = self._apply_rigid_transform(background, scale=scale, dx=dx, dy=dy)
-
-            # Foreground parallax — decor shifts more than architecture
-            fg_dx = int(dx * p.fg_parallax_factor)
-            fg_dy = int(dy * p.fg_parallax_factor)
-
-            if motion == "push_in":
-                parallax_offset = fg_mask * p.pan_shift_px * (t - 0.5) * 0.4
-                fg_dx += int(np.mean(parallax_offset) * 0.5)
-                fg_dy += int(np.mean(parallax_offset) * 0.2)
-
-            M_fg = np.float32([[1, 0, fg_dx], [0, 1, fg_dy]])
-            h, w = foreground.shape[:2]
-            fg_shifted = cv2.warpAffine(
-                foreground, M_fg, (w, h), borderMode=cv2.BORDER_REPLICATE
+            bg_frame = self._apply_rigid_transform(
+                background, scale=scale, dx=dx, dy=dy
             )
-            alpha_shifted = cv2.warpAffine(
-                (alpha.squeeze() * 255).astype(np.uint8),
-                M_fg,
-                (w, h),
-                borderMode=cv2.BORDER_CONSTANT,
-                borderValue=0,
-            ).astype(np.float32)[..., None] / 255.0
 
+            fg_shifted, alpha_shifted = self._warp_depth_parallax(
+                foreground,
+                depth,
+                alpha,
+                t=t,
+                dx=dx,
+                dy=dy,
+                motion=motion,
+            )
+
+            a = alpha_shifted[..., None]
             composite = bg_frame.astype(np.float32)
-            composite = composite * (1.0 - alpha_shifted) + fg_shifted.astype(np.float32) * alpha_shifted
+            composite = (
+                composite * (1.0 - a) + fg_shifted.astype(np.float32) * a
+            )
             composite = np.clip(composite, 0, 255).astype(np.uint8)
             frames.append(self._fit_9_16(composite))
 
+        out_h, out_w = frames[0].shape[:2] if frames else (0, 0)
         logger.info(
-            "Synthesized %d frames @ %dfps (%.1fs) motion=%s",
+            "Synthesized %d frames @ %dfps (%.1fs) motion=%s output=%dx%d max_disp=%.1fpx",
             len(frames),
             fps,
             duration,
             motion,
+            out_w,
+            out_h,
+            p.max_displacement_px,
         )
         return frames
