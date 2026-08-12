@@ -1,0 +1,26 @@
+<!-- Google Drive cloud picker modal -->
+<div id="drive-modal-backdrop" class="drive-modal-backdrop hidden" aria-hidden="true">
+  <div class="drive-modal card-surface shadow-luxe-lg" role="dialog" aria-labelledby="drive-modal-title">
+    <div class="drive-modal-header">
+      <div>
+        <p class="text-xs uppercase tracking-widest text-sullivan-muted">Cloud Import</p>
+        <h2 id="drive-modal-title" class="font-display text-xl text-sullivan-ink">Browse Google Drive</h2>
+      </div>
+      <button type="button" id="drive-modal-close" class="drive-close-btn" aria-label="Close">×</button>
+    </div>
+    <div class="drive-modal-body">
+      <div id="drive-category-chips" class="drive-category-chips"></div>
+      <div id="drive-breadcrumb" class="drive-breadcrumb"></div>
+      <div id="drive-list" class="drive-list">
+        <p class="drive-empty">Loading folders…</p>
+      </div>
+    </div>
+    <div class="drive-modal-footer">
+      <p id="drive-selection-label" class="text-xs text-muted">Select a folder or images</p>
+      <div class="flex gap-2">
+        <button type="button" id="drive-select-folder-btn" class="btn-outline text-xs py-2 px-4 hidden">Use Entire Folder</button>
+        <button type="button" id="drive-import-btn" class="drive-import-btn" disabled>Import Selected</button>
+      </div>
+    </div>
+  </div>
+</div>

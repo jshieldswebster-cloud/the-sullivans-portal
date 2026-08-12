@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — {{ page_title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    {% include "includes/nav.html" %}
+
+    <main class="main-canvas main-canvas-narrow">
+      <div class="main-canvas-inner">
+      <section class="card-surface rounded-2xl p-8 text-center space-y-3 shadow-luxe-lg">
+        <h2 class="font-display text-2xl text-sullivan-ink">{{ page_title }}</h2>
+        <p class="text-muted text-sm max-w-md mx-auto">{{ page_description }}</p>
+      </section>
+      </div>
+    </main>
+  </body>
+</html>

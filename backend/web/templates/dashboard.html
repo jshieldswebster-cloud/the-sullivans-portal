@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — Ideal Row</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+    <link rel="stylesheet" href="/static/css/drive_picker.css" />
+    <link rel="stylesheet" href="/static/css/drive_review.css" />
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    {% include "includes/nav.html" %}
+
+    <main class="main-canvas">
+      <div class="main-canvas-inner space-y-8">
+      <!-- Review for Posting queue (daily batch) -->
+      <section class="drive-review-section drive-review-primary card-surface shadow-luxe" id="review-for-posting-section">
+        <div class="drive-review-header">
+          <div>
+            <h2>Review for Posting</h2>
+            <p class="text-muted text-xs mt-1">
+              Up to <strong>3 daily packages</strong> auto-generated from <strong>VV LUXE STUDIO</strong> Drive —
+              review, set audio &amp; watermark, then approve to publish.
+            </p>
+            <p id="backlog-quota-hint" class="text-xs text-sullivan-green mt-2"></p>
+          </div>
+          <div class="drive-review-actions">
+            <span id="posting-queue-status" class="drive-sync-status"></span>
+            <button type="button" id="backlog-run-btn" class="drive-sync-btn drive-sync-btn-secondary">Run Daily Batch</button>
+          </div>
+        </div>
+        <p id="posting-queue-empty" class="drive-review-empty hidden">No packages ready for review. The daily worker stages up to 3 complete projects automatically.</p>
+        <div id="posting-queue-grid" class="drive-review-grid"></div>
+        <div id="posting-queue-detail" class="drive-review-detail hidden">
+          <h3 class="font-display text-lg text-sullivan-ink">
+            <span id="posting-detail-title"></span>
+            <span class="text-muted text-sm font-sans ml-2" id="posting-detail-category"></span>
+          </h3>
+          <p id="posting-detail-batch" class="text-xs text-muted mb-2"></p>
+          <div class="drive-review-slots">
+            <div class="drive-review-slot"><p class="drive-review-slot-label">Post 1 · Cover</p><p class="drive-review-slot-count">1</p></div>
+            <div class="drive-review-slot"><p class="drive-review-slot-label">Post 2 · Carousel</p><p class="drive-review-slot-count">8</p></div>
+            <div class="drive-review-slot"><p class="drive-review-slot-label">Post 3 · Reel</p><p class="drive-review-slot-count">✓</p></div>
+          </div>
+          <div id="posting-preview-row" class="drive-review-preview-row"></div>
+          <div id="posting-reel-status" class="text-xs text-muted my-2"></div>
+          <div class="drive-review-audio">
+            <label for="posting-audio-select" class="text-xs uppercase tracking-wider text-muted">Audio vibe</label>
+            <select id="posting-audio-select"></select>
+            <a href="/watermark" class="drive-watermark-link text-xs uppercase tracking-wider text-sullivan-green hover:underline">Tweak watermark →</a>
+            <button type="button" id="posting-rerender-btn" class="drive-browse-btn">Re-render reel</button>
+            <button type="button" id="posting-approve-btn" class="drive-approve-btn">Approve &amp; Clear</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Drive backlog (unprocessed metadata) -->
+      <section class="drive-review-section card-surface shadow-luxe drive-review-collapsed" id="drive-review-section">
+        <div class="drive-review-header">
+          <div>
+            <h2>Drive Backlog</h2>
+            <p class="text-muted text-xs mt-1">Unprocessed client folders awaiting the daily batch worker</p>
+          </div>
+          <div class="drive-review-actions">
+            <span id="drive-sync-status" class="drive-sync-status"></span>
+            <button type="button" id="drive-sync-btn" class="drive-sync-btn">Sync from Drive</button>
+          </div>
+        </div>
+        <p id="drive-review-empty" class="drive-review-empty hidden">No pending projects. Connect Google Drive and run a sync to import client folders.</p>
+        <div id="drive-review-grid" class="drive-review-grid"></div>
+        <div id="drive-review-detail" class="drive-review-detail hidden">
+          <h3 class="font-display text-lg text-sullivan-ink">
+            <span id="drive-review-detail-title"></span>
+            <span class="text-muted text-sm font-sans ml-2" id="drive-review-detail-category"></span>
+          </h3>
+          <div class="drive-review-slots">
+            <div class="drive-review-slot">
+              <p class="drive-review-slot-label">Post 1 · Cover</p>
+              <p class="drive-review-slot-count" id="drive-review-slot-cover">0</p>
+            </div>
+            <div class="drive-review-slot">
+              <p class="drive-review-slot-label">Post 2 · Carousel</p>
+              <p class="drive-review-slot-count" id="drive-review-slot-carousel">0</p>
+            </div>
+            <div class="drive-review-slot">
+              <p class="drive-review-slot-label">Post 3 · Reel</p>
+              <p class="drive-review-slot-count" id="drive-review-slot-reel">0</p>
+            </div>
+          </div>
+          <ul id="drive-review-detail-warnings" class="text-xs text-amber-700 list-disc pl-5 hidden"></ul>
+          <div id="drive-review-preview-row" class="drive-review-preview-row"></div>
+          <div class="drive-review-audio">
+            <label for="drive-review-audio-select" class="text-xs uppercase tracking-wider text-muted">Audio vibe</label>
+            <select id="drive-review-audio-select"></select>
+            <button type="button" id="drive-approve-btn" class="drive-approve-btn" disabled>Approve &amp; Build Row</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Event metadata (always visible) -->
+      <section class="card-surface rounded-2xl p-6 space-y-5 shadow-luxe">
+        <h2 class="font-display text-xl text-sullivan-ink">Event Details</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-muted mb-2">Event Name</label>
+            <input
+              type="text"
+              id="event-name"
+              placeholder="e.g. The Johnson Wedding"
+              class="w-full input-luxe px-4 py-3 text-sm"
+            />
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-muted mb-2">Category</label>
+            <div id="category-tabs" class="flex flex-wrap gap-2">
+              {% for cat in categories %}
+              <button
+                type="button"
+                data-category="{{ cat }}"
+                class="category-tab px-3 py-1.5 rounded-full text-xs uppercase tracking-wider border border-sullivan-taupe text-muted hover:border-sullivan-green/40 transition bg-white"
+              >
+                {{ cat }}
+              </button>
+              {% endfor %}
+            </div>
+            <input type="hidden" id="selected-category" value="{{ categories[0] }}" />
+          </div>
+        </div>
+        <div class="drive-toolbar pt-2 border-t border-sullivan-taupe">
+          <span data-drive-status class="drive-status-pill drive-status-offline">Drive</span>
+          <button type="button" data-drive-connect data-return-to="/new-post" class="drive-connect-btn">Connect Google Drive</button>
+        </div>
+      </section>
+
+      <!-- Wizard stepper -->
+      <nav id="wizard-stepper" class="flex items-center justify-between gap-2">
+        <button type="button" data-step="1" class="wizard-step active">1 · Cover</button>
+        <span class="wizard-connector"></span>
+        <button type="button" data-step="2" class="wizard-step">2 · Carousel</button>
+        <span class="wizard-connector"></span>
+        <button type="button" data-step="3" class="wizard-step">3 · Reel</button>
+        <span class="wizard-connector"></span>
+        <button type="button" data-step="4" class="wizard-step">4 · Review</button>
+        <span class="wizard-connector"></span>
+        <button type="button" data-step="5" class="wizard-step">5 · Export</button>
+      </nav>
+
+      <!-- Step 1 -->
+      <section id="step-1" class="wizard-panel card-surface rounded-2xl p-6 space-y-4 shadow-luxe">
+        <div class="flex items-center gap-3">
+          <span class="post-badge">1</span>
+          <div>
+            <h3 class="font-display text-lg text-sullivan-ink">Event Cover Photo</h3>
+            <p class="text-muted text-xs">TYPE OF EVENT · exactly 1 photo</p>
+          </div>
+        </div>
+        <label class="post-upload-zone block border-2 border-dashed border-sullivan-taupe-dark rounded-xl p-10 text-center cursor-pointer hover:border-sullivan-green bg-white shadow-luxe transition">
+          <input type="file" id="post-1-input" accept="image/jpeg,image/png,.jpg,.png" class="hidden" />
+          <p class="text-sullivan-green font-medium">Upload cover image</p>
+          <p class="text-muted text-xs mt-1">Single photo · anchors your Ideal Row</p>
+        </label>
+        <div class="drive-inline-actions">
+          <button type="button" data-drive-browse data-drive-mode="single" data-drive-callback="onDriveImportPost1" class="drive-browse-btn">Browse Drive · Cover</button>
+        </div>
+        <div id="post-1-preview" class="hidden text-center">
+          <img id="post-1-img" src="" alt="Cover" class="inline-block max-w-xs rounded-xl aspect-[4/5] object-cover" />
+          <p id="post-1-status" class="text-xs text-sullivan-green mt-2"></p>
+        </div>
+        <div class="flex justify-end">
+          <button type="button" id="step-1-next" disabled class="wizard-next-btn">Continue to Carousel →</button>
+        </div>
+      </section>
+
+      <!-- Step 2 -->
+      <section id="step-2" class="wizard-panel hidden card-surface rounded-2xl p-6 space-y-4 shadow-luxe">
+        <div class="flex items-center gap-3">
+          <span class="post-badge">2</span>
+          <div>
+            <h3 class="font-display text-lg text-sullivan-ink">Details &amp; Decor Carousel</h3>
+            <p class="text-muted text-xs">Upload exactly 8 photos</p>
+          </div>
+        </div>
+        <label class="post-upload-zone block border-2 border-dashed border-sullivan-taupe-dark rounded-xl p-10 text-center cursor-pointer hover:border-sullivan-green bg-white shadow-luxe transition">
+          <input type="file" id="post-2-input" multiple accept="image/jpeg,image/png,.jpg,.png" class="hidden" />
+          <p class="text-sullivan-green font-medium">Upload 8 decor photos</p>
+          <p class="text-muted text-xs mt-1"><span id="post-2-count">0</span> / 8 selected</p>
+        </label>
+        <div class="drive-inline-actions">
+          <button type="button" data-drive-browse data-drive-mode="multi-8" data-drive-max="8" data-drive-callback="onDriveImportPost2" class="drive-browse-btn">Browse Drive · 8 Photos</button>
+        </div>
+        <div id="post-2-grid" class="hidden grid grid-cols-4 gap-2"></div>
+        <div class="flex justify-between">
+          <button type="button" class="wizard-back-btn" data-goto="1">← Back</button>
+          <button type="button" id="step-2-next" disabled class="wizard-next-btn">Continue to Reel →</button>
+        </div>
+      </section>
+
+      <!-- Step 3 -->
+      <section id="step-3" class="wizard-panel hidden card-surface rounded-2xl p-6 space-y-4 shadow-luxe">
+        <div class="flex items-center gap-3">
+          <span class="post-badge">3</span>
+          <div>
+            <h3 class="font-display text-lg text-sullivan-ink">Event Overview Reel</h3>
+            <p class="text-muted text-xs">Photos for vertical reel · VideoToolbox + logo branding</p>
+          </div>
+        </div>
+        <label class="post-upload-zone block border-2 border-dashed border-sullivan-taupe-dark rounded-xl p-10 text-center cursor-pointer hover:border-sullivan-green bg-white shadow-luxe transition">
+          <input type="file" id="post-3-input" multiple accept="image/jpeg,image/png,.jpg,.png" class="hidden" />
+          <p class="text-sullivan-green font-medium">Upload reel photos</p>
+          <p class="text-muted text-xs mt-1"><span id="post-3-count">0</span> photo(s) selected</p>
+        </label>
+        <div class="drive-inline-actions">
+          <button type="button" data-drive-browse data-drive-mode="multi" data-drive-callback="onDriveImportPost3" class="drive-browse-btn">Browse Drive · Reel Photos</button>
+        </div>
+        <div id="post-3-grid" class="hidden grid grid-cols-4 gap-2"></div>
+        <details class="text-sm">
+          <summary class="text-muted cursor-pointer hover:text-sullivan-green">Reel settings</summary>
+          <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-muted mb-2">Motion Style</label>
+              <select id="motion-style" class="w-full input-luxe px-4 py-2 text-sm">
+                {% for opt in motion_options %}
+                <option value="{{ opt }}">{{ opt.replace('_', ' ').title() }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-muted mb-2">
+                Duration <span id="duration-label" class="text-sullivan-green">4.0s</span>
+              </label>
+              <input type="range" id="clip-duration" min="2" max="8" step="0.5" value="4" class="w-full accent-[#2F5233]" />
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-muted mb-2">
+                Cross-fade <span id="transition-label" class="text-sullivan-green">0.8s</span>
+              </label>
+              <input type="range" id="transition-sec" min="0.3" max="2" step="0.1" value="0.8" class="w-full accent-[#2F5233]" />
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-muted mb-2">Audio (optional)</label>
+              <input type="file" id="audio-input" accept="audio/*" class="w-full text-xs text-muted file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-sullivan-green file:text-sullivan-white" />
+            </div>
+          </div>
+        </details>
+        <div class="flex justify-between">
+          <button type="button" class="wizard-back-btn" data-goto="2">← Back</button>
+          <button type="button" id="step-3-next" disabled class="wizard-next-btn">Continue to Review →</button>
+        </div>
+      </section>
+
+      <!-- Step 4: Template Preview -->
+      <section id="step-4" class="wizard-panel hidden space-y-6">
+        <div class="text-center">
+          <h2 class="font-display text-2xl text-sullivan-ink">Template Preview</h2>
+          <p class="text-muted text-sm mt-1">Verify your 3-post Ideal Row before saving</p>
+        </div>
+
+        <div class="template-preview-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <!-- Post 1 -->
+          <div class="template-card card-surface rounded-2xl p-4 shadow-luxe">
+            <p class="text-xs uppercase tracking-widest text-sullivan-gold mb-3 text-center">Post 1 · Cover</p>
+            <div class="aspect-[4/5] preview-placeholder rounded-xl overflow-hidden flex items-center justify-center">
+              <img id="preview-post-1" src="" alt="" class="w-full h-full object-cover hidden" />
+              <span id="preview-post-1-empty" class="text-muted text-xs">No cover</span>
+            </div>
+          </div>
+
+          <!-- Post 2 -->
+          <div class="template-card card-surface rounded-2xl p-4 shadow-luxe">
+            <p class="text-xs uppercase tracking-widest text-sullivan-gold mb-3 text-center">Post 2 · 8-Photo Carousel</p>
+            <div id="preview-post-2-grid" class="grid grid-cols-4 gap-1 aspect-square preview-placeholder rounded-xl p-1 overflow-hidden">
+              <div class="col-span-4 flex items-center justify-center text-muted text-xs">No photos</div>
+            </div>
+            <div class="mt-2 flex items-center justify-between">
+              <button type="button" id="preview-p2-prev" class="text-sullivan-green text-sm opacity-50" disabled>‹</button>
+              <span id="preview-p2-counter" class="text-xs text-muted">1 / 8</span>
+              <button type="button" id="preview-p2-next" class="text-sullivan-green text-sm opacity-50" disabled>›</button>
+            </div>
+          </div>
+
+          <!-- Post 3 -->
+          <div class="template-card card-surface rounded-2xl p-4 shadow-luxe">
+            <p class="text-xs uppercase tracking-widest text-sullivan-gold mb-3 text-center">Post 3 · Reel</p>
+            <div id="preview-post-3-grid" class="grid grid-cols-3 gap-1 min-h-[200px] preview-placeholder rounded-xl p-2">
+              <div class="col-span-3 flex items-center justify-center text-muted text-xs">No reel photos</div>
+            </div>
+            <p class="text-center text-muted text-xs mt-2">Renders after save · logo overlay applied</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col items-center gap-3">
+          <button
+            id="save-row-btn"
+            disabled
+            class="w-full max-w-md py-4 rounded-xl bg-sullivan-green text-sullivan-white font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            Save Event Row
+          </button>
+          <p id="validation-hint" class="text-muted text-xs">Complete all three steps to save</p>
+          <div id="save-status" class="hidden text-sm"></div>
+        </div>
+        <div class="flex justify-start">
+          <button type="button" class="wizard-back-btn" data-goto="3">← Back to Reel</button>
+        </div>
+      </section>
+
+      <!-- Step 5: Instagram Export -->
+      <section id="step-5" class="wizard-panel hidden space-y-6">
+        <div class="text-center">
+          <h2 class="font-display text-2xl text-sullivan-ink">Instagram Export Package</h2>
+          <p class="text-muted text-sm mt-1">Prepare optimized downloads for each post</p>
+        </div>
+
+        <!-- Saved row preview (post-save) -->
+        <div id="saved-preview" class="hidden template-preview-grid grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="template-card card-surface rounded-xl p-4 text-center shadow-luxe">
+            <p class="text-xs uppercase tracking-wider text-muted mb-2">Post 1</p>
+            <img id="saved-post-1" src="" alt="" class="w-full rounded-lg aspect-[4/5] object-cover" />
+          </div>
+          <div class="template-card card-surface rounded-xl p-4 shadow-luxe">
+            <p class="text-xs uppercase tracking-wider text-muted mb-2 text-center">Post 2</p>
+            <div class="carousel-viewport relative aspect-[4/5] preview-placeholder rounded-lg overflow-hidden">
+              <img id="saved-post-2" src="" alt="" class="w-full h-full object-contain" />
+              <button type="button" id="saved-p2-prev" class="carousel-nav left-2 text-sm">‹</button>
+              <button type="button" id="saved-p2-next" class="carousel-nav right-2 text-sm">›</button>
+            </div>
+          </div>
+          <div class="template-card card-surface rounded-xl p-4 shadow-luxe">
+            <p class="text-xs uppercase tracking-wider text-muted mb-2 text-center">Post 3</p>
+            <div id="reel-progress" class="space-y-2">
+              <div class="h-2 bg-sullivan-taupe rounded-full overflow-hidden">
+                <div id="reel-progress-bar" class="h-full bg-sullivan-green transition-all" style="width: 0%"></div>
+              </div>
+              <p id="reel-progress-msg" class="text-xs text-muted text-center">Encoding reel…</p>
+            </div>
+            <video id="saved-reel" controls playsinline class="hidden w-full rounded-lg aspect-[9/16] object-cover mt-2"></video>
+          </div>
+        </div>
+
+        <button
+          id="prepare-instagram-btn"
+          disabled
+          class="w-full max-w-lg mx-auto block py-4 rounded-xl border-2 border-sullivan-green text-sullivan-green font-medium hover:bg-sullivan-green/10 disabled:opacity-40 disabled:cursor-not-allowed transition"
+        >
+          Prepare for Instagram
+        </button>
+        <p id="prepare-status" class="text-center text-sm text-muted hidden"></p>
+
+        <!-- Download buttons -->
+        <div id="export-downloads" class="hidden space-y-6 max-w-3xl mx-auto">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <a id="dl-post-1" href="#" download class="export-dl-btn">
+              <span class="export-dl-label">Download Post 1</span>
+              <span class="export-dl-sub">Cover · optimized JPEG</span>
+            </a>
+            <a id="dl-post-2" href="#" download class="export-dl-btn">
+              <span class="export-dl-label">Download Post 2 Carousel ZIP</span>
+              <span class="export-dl-sub">8 photos · 1.jpg–8.jpg</span>
+            </a>
+            <a id="dl-post-3" href="#" download class="export-dl-btn">
+              <span class="export-dl-label">Download Post 3 Reel</span>
+              <span class="export-dl-sub">Branded MP4 · 1080×1920</span>
+            </a>
+          </div>
+
+          <div id="export-captions" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="export-caption-card">
+              <p class="text-xs uppercase tracking-wider text-muted mb-2">Post 1 Caption</p>
+              <div id="caption-preview-1" class="caption-preview text-sm"></div>
+              <a id="dl-caption-1" href="#" download class="text-xs text-sullivan-green mt-2 inline-block hover:underline">Download caption</a>
+            </div>
+            <div class="export-caption-card">
+              <p class="text-xs uppercase tracking-wider text-muted mb-2">Post 2 Caption</p>
+              <div id="caption-preview-2" class="caption-preview text-sm"></div>
+              <a id="dl-caption-2" href="#" download class="text-xs text-sullivan-green mt-2 inline-block hover:underline">Download caption</a>
+            </div>
+            <div class="export-caption-card">
+              <p class="text-xs uppercase tracking-wider text-muted mb-2">Post 3 Caption</p>
+              <div id="caption-preview-3" class="caption-preview text-sm"></div>
+              <a id="dl-caption-3" href="#" download class="text-xs text-sullivan-green mt-2 inline-block hover:underline">Download caption</a>
+            </div>
+          </div>
+          <p id="export-path" class="text-center text-xs text-muted font-mono"></p>
+        </div>
+      </section>
+      </div>
+    </main>
+
+    {% include "includes/drive_modal.html" %}
+    <script src="/static/js/drive_picker.js"></script>
+    <script src="/static/js/drive_review.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+  </body>
+</html>

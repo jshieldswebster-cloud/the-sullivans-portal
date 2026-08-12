@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -28,7 +29,7 @@ async def upload_batch(files: list[UploadFile] = File(...)):
 
 
 @router.get("/images")
-async def get_images(category: str | None = None):
+async def get_images(category: Optional[str] = None):
     rows = list_images(category=category)
     return {"count": len(rows), "images": rows, "categories": EVENT_CATEGORIES}
 

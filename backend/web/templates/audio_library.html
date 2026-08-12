@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — Audio Library</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+    <link rel="stylesheet" href="/static/css/audio_library.css" />
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    {% include "includes/nav.html" %}
+
+    <main class="main-canvas main-canvas-wide">
+      <div class="main-canvas-inner space-y-6">
+        <header>
+          <p class="text-xs uppercase tracking-[0.2em] text-sullivan-muted">Reel Pipeline</p>
+          <h1 class="font-display text-3xl text-sullivan-ink mt-1">AI Audio & Vibe Matcher</h1>
+          <p class="text-muted text-sm mt-2 max-w-2xl">
+            Royalty-free background tracks organized by mood. Your selection is automatically trimmed or looped to match each 9:16 reel — primed for Instagram audio syncing.
+          </p>
+        </header>
+
+        <section id="audio-hero" class="audio-hero card-surface shadow-luxe">
+          <div>
+            <p class="audio-now-playing">Active Reel Track</p>
+            <strong id="selected-track-label">Loading…</strong>
+          </div>
+          <p id="library-stats" class="text-xs text-muted"></p>
+        </section>
+
+        <div id="vibe-grid" class="audio-vibe-grid">
+          <p class="text-muted text-sm col-span-full">Loading vibes…</p>
+        </div>
+      </div>
+    </main>
+
+    <audio id="preview-player" preload="metadata"></audio>
+    <script src="/static/js/audio_library.js"></script>
+  </body>
+</html>

@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -19,6 +23,34 @@ class ReelRequest(BaseModel):
 
 class CategoryRequest(BaseModel):
     category: str
+
+
+class MontageRequest(BaseModel):
+    filepaths: list[str] = Field(..., min_length=1)
+    category: Optional[str] = None
+    audio_path: Optional[str] = None
+    clip_duration_sec: float = Field(default=4.0, ge=1.0, le=15.0)
+    transition_sec: float = Field(default=0.8, ge=0.2, le=3.0)
+
+
+@router.post("/montage")
+async def render_montage(body: MontageRequest):
+    """Assemble multi-photo vertical reel with Ken Burns + cross-fade."""
+    from backend.main import app_state
+
+    try:
+        result = await app_state.render_service.generate_montage(
+            body.filepaths,
+            category=body.category,
+            audio_path=body.audio_path,
+            clip_duration_sec=body.clip_duration_sec,
+            transition_sec=body.transition_sec,
+        )
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/reel")

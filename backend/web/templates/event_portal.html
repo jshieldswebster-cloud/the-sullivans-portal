@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Sullivan's — Event Portal</title>
+    <link rel="stylesheet" href="/static/css/event_portal.css" />
+  </head>
+  <body class="event-portal">
+    <div class="container">
+      <div class="nav-bar">
+        <div>
+          <h1 class="brand-title">The Sullivan's</h1>
+          <p class="brand-subtitle">Studio Portal</p>
+        </div>
+        <button type="button" class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="dropdownMenu">
+          Menu ▾
+        </button>
+
+        <nav id="dropdownMenu" class="dropdown-menu" aria-label="Studio navigation">
+          <a href="/login?home=1" class="dropdown-item">HOME</a>
+          <a href="/new-post" class="dropdown-item">New Post</a>
+          <a href="/grid-preview" class="dropdown-item">9-Grid Preview</a>
+          <a href="/content-calendar" class="dropdown-item">Content Calendar</a>
+          <a href="/brand-vault" class="dropdown-item">Brand Vault</a>
+          <a href="/audio-library" class="dropdown-item">Audio Library</a>
+          <a href="/watermark" class="dropdown-item">Watermark Studio</a>
+          <a href="/client-gallery" class="dropdown-item">Client Gallery</a>
+          <a href="/tour-mode" class="dropdown-item">Tour Mode</a>
+          <a href="/analytics" class="dropdown-item">Analytics</a>
+          <a href="/vincent-studio" class="dropdown-item">Vincent's Studio</a>
+          <div class="dropdown-divider"></div>
+          <a href="/logout" class="dropdown-item dropdown-signout">Sign out</a>
+        </nav>
+      </div>
+
+      <div class="card">
+        <h2>Review for Posting</h2>
+        <p>
+          Up to <strong>3 daily packages</strong> auto-generated from VV LUXE STUDIO Drive —
+          review, set audio &amp; watermark, then approve to publish.
+        </p>
+        <p class="meta-info" id="posting-meta">Loading queue…</p>
+        <ul class="queue-list" id="posting-queue-list"></ul>
+        <button type="button" class="btn" id="btn-daily-batch">RUN DAILY BATCH</button>
+        <p class="empty-note" id="posting-queue-empty">
+          No packages ready for review. The daily worker stages up to 3 complete projects automatically.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>Drive Backlog</h2>
+        <p>Unprocessed client folders awaiting the daily batch worker.</p>
+        <p class="meta-info" id="backlog-meta">Checking backlog…</p>
+        <button type="button" class="btn btn-secondary" id="btn-drive-sync">SYNC FROM DRIVE</button>
+        <p class="empty-note" id="backlog-empty">
+          No pending projects. Connect Google Drive and run a sync to import client folders.
+        </p>
+      </div>
+
+      <div class="card">
+        <h2>Event Details &amp; Checklist</h2>
+        <p class="meta-info">Active Client File &amp; Staging Schedule</p>
+        <div class="event-details-content">
+          <p><strong>Venue:</strong> The Sullivan's</p>
+          <p><strong>Curated By:</strong> Vincent Sullivan (In-House Photography &amp; Media)</p>
+          <p><strong>Design Theme:</strong> Willow Green, Cream, Black &amp; White Luxury</p>
+          <p><strong>Status:</strong> Staging setup and lighting array prepared for incoming evening booking.</p>
+        </div>
+        <a href="/vincent-studio" class="btn">Open Vincent's Studio</a>
+      </div>
+    </div>
+
+    <p class="status-line" id="portal-status"></p>
+
+    <script src="/static/js/event_portal.js"></script>
+  </body>
+</html>

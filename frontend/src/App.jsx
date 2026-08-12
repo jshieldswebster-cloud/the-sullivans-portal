@@ -13,11 +13,12 @@ import StatusBar from "./components/StatusBar";
 import UploadZone from "./components/UploadZone";
 
 const CATEGORIES = [
-  "Baby Shower",
-  "Birthday",
-  "Corporate",
+  "Birthdays",
   "Weddings",
-  "Legacy Receptions",
+  "Baby Showers",
+  "Venue",
+  "Grad Party",
+  "Corporate",
 ];
 
 export default function App() {

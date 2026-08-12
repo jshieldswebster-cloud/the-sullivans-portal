@@ -109,27 +109,40 @@ class CarouselCompositor:
         self,
         category: str,
         *,
-        subtitle: str = "VV LUXE · Richmond, California",
+        subtitle: str = "VV LUXE Studio · Sullivan Portal",
+        title_bold: str | None = None,
+        title_script: str | None = None,
     ) -> Image.Image:
         canvas = Image.new("RGB", (CAROUSEL_WIDTH, CAROUSEL_HEIGHT), (18, 16, 20))
         draw = ImageDraw.Draw(canvas)
 
         title_font = self._load_font(72)
+        script_font = self._load_font(48)
         sub_font = self._load_font(32)
         accent = (201, 169, 110)
 
+        headline = (title_bold or category).upper()
+        script_line = title_script or subtitle
+
         draw.text(
-            (CAROUSEL_WIDTH // 2, CAROUSEL_HEIGHT // 2 - 60),
-            category.upper(),
+            (CAROUSEL_WIDTH // 2, CAROUSEL_HEIGHT // 2 - 80),
+            headline,
             font=title_font,
             fill=accent,
             anchor="mm",
         )
         draw.text(
-            (CAROUSEL_WIDTH // 2, CAROUSEL_HEIGHT // 2 + 40),
-            subtitle,
-            font=sub_font,
+            (CAROUSEL_WIDTH // 2, CAROUSEL_HEIGHT // 2 + 10),
+            script_line,
+            font=script_font,
             fill=(230, 226, 218),
+            anchor="mm",
+        )
+        draw.text(
+            (CAROUSEL_WIDTH // 2, CAROUSEL_HEIGHT // 2 + 80),
+            subtitle if title_script else "Sullivan Portal",
+            font=sub_font,
+            fill=(138, 133, 128),
             anchor="mm",
         )
 
@@ -155,6 +168,8 @@ class CarouselCompositor:
         category: str,
         *,
         output_dir: str | Path | None = None,
+        title_bold: str | None = None,
+        title_script: str | None = None,
     ) -> list[Path]:
         """Generate title slide + one slide per image."""
         out_dir = Path(output_dir or CAROUSELS_DIR / category.lower().replace(" ", "_"))
@@ -162,7 +177,11 @@ class CarouselCompositor:
 
         slides: list[Path] = []
 
-        title = self.create_title_slide(category)
+        title = self.create_title_slide(
+            category,
+            title_bold=title_bold,
+            title_script=title_script,
+        )
         title = self._apply_logo(title, anchor="top-left", opacity=0.9)
         title_path = out_dir / "slide_00_title.jpg"
         title.save(title_path, quality=95, subsampling=0)

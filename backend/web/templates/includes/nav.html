@@ -1,0 +1,21 @@
+<header class="site-header border-b border-sullivan-taupe px-8 py-5 flex items-center justify-between shadow-luxe">
+  <div>
+    <h1 class="font-display text-2xl text-sullivan-ink tracking-wide">{{ brand_name }}</h1>
+    <p class="text-sullivan-gold text-sm mt-0.5 font-display italic">{{ brand_tagline }}</p>
+  </div>
+  <nav class="flex items-center gap-4 text-sm flex-wrap justify-end">
+    <a href="/new-post" class="nav-link {% if active == 'dashboard' %}nav-link-active{% endif %}">New Post</a>
+    <a href="/event-portal" class="nav-link {% if active == 'portal' %}nav-link-active{% endif %}">Event Portal</a>
+    <a href="/grid-preview" class="nav-link {% if active == 'grid' %}nav-link-active{% endif %}">9-Grid Preview</a>
+    <a href="/content-calendar" class="nav-link {% if active == 'calendar' %}nav-link-active{% endif %}">Content Calendar</a>
+    <a href="/brand-vault" class="nav-link {% if active == 'vault' %}nav-link-active{% endif %}">Brand Vault</a>
+    <a href="/audio-library" class="nav-link {% if active == 'audio' %}nav-link-active{% endif %}">Audio Library</a>
+    <a href="/watermark" class="nav-link {% if active == 'watermark' %}nav-link-active{% endif %}">Watermark Studio</a>
+    <a href="/client-gallery" class="nav-link {% if active == 'portal' %}nav-link-active{% endif %}">Client Gallery</a>
+    <a href="/tour-mode" class="nav-link {% if active == 'tour' %}nav-link-active{% endif %}">Tour Mode</a>
+    <a href="/analytics" class="nav-link {% if active == 'analytics' %}nav-link-active{% endif %}">Analytics</a>
+    <a href="/vincent-studio" class="nav-link {% if active == 'vincent' %}nav-link-active{% endif %}">Vincent's Studio</a>
+    <a href="/login?home=1" class="nav-link">HOME</a>
+    <a href="/logout" class="nav-link nav-link-accent">Sign out</a>
+  </nav>
+</header>

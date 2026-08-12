@@ -8,6 +8,25 @@ from pathlib import Path
 import torch
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_env_file() -> None:
+    """Load KEY=VALUE pairs from project .env (does not override existing env)."""
+    env_path = ROOT_DIR / ".env"
+    if not env_path.is_file():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+_load_env_file()
 BACKEND_DIR = ROOT_DIR / "backend"
 DATA_DIR = ROOT_DIR / "data"
 UPLOADS_DIR = ROOT_DIR / "uploads"
@@ -24,13 +43,14 @@ FONTS_DIR = ASSETS_DIR / "fonts"
 LOGOS_DIR = ASSETS_DIR / "logos"
 AUDIO_DIR = ASSETS_DIR / "audio"
 
-# Event categories for zero-shot CLIP classification
+# Event categories for zero-shot CLIP classification and upload folders
 EVENT_CATEGORIES: list[str] = [
-    "Baby Shower",
-    "Birthday",
-    "Corporate",
+    "Birthdays",
     "Weddings",
-    "Legacy Receptions",
+    "Baby Showers",
+    "Venue",
+    "Grad Party",
+    "Corporate",
 ]
 
 UNCATEGORIZED_LABEL = "Uncategorized"
@@ -38,7 +58,7 @@ CLASSIFICATION_CONFIDENCE_THRESHOLD = 0.35
 
 # Weighted descriptive prompt phrases per category (luxury venue context)
 CATEGORY_PROMPT_WEIGHTS: dict[str, list[tuple[str, float]]] = {
-    "Baby Shower": [
+    "Baby Showers": [
         ("pastel decor", 1.0),
         ("balloon arches", 1.2),
         ("baby shower setup", 1.3),
@@ -46,7 +66,7 @@ CATEGORY_PROMPT_WEIGHTS: dict[str, list[tuple[str, float]]] = {
         ("cake table", 1.0),
         ("soft lighting", 0.9),
     ],
-    "Birthday": [
+    "Birthdays": [
         ("birthday party setup", 1.3),
         ("milestone celebration decor", 1.2),
         ("LED neon signs", 1.1),
@@ -68,11 +88,19 @@ CATEGORY_PROMPT_WEIGHTS: dict[str, list[tuple[str, float]]] = {
         ("luxury table settings", 1.2),
         ("bridal decor", 1.3),
     ],
-    "Legacy Receptions": [
-        ("memorial reception", 1.3),
-        ("intimate family gathering banquet", 1.2),
-        ("warm formal seating", 1.0),
-        ("understated luxury decor", 1.1),
+    "Venue": [
+        ("luxury event venue interior", 1.3),
+        ("banquet hall architecture", 1.2),
+        ("ambient uplighting", 1.1),
+        ("empty venue setup", 1.0),
+        ("Richmond California event space", 1.0),
+    ],
+    "Grad Party": [
+        ("graduation celebration", 1.3),
+        ("school colors decor", 1.1),
+        ("milestone party setup", 1.2),
+        ("photo backdrop", 1.0),
+        ("festive banquet tables", 1.0),
     ],
 }
 
@@ -147,16 +175,134 @@ REEL_PRESERVE_NATIVE_RES = True
 
 VALID_MOTIONS = ("push_in", "pan_left_right", "pan_left", "tilt_up")
 
+# Multi-image montage assembler (Ken Burns + xfade — no depth warping)
+MONTAGE_CLIP_DURATION_SEC = 4.0
+MONTAGE_TRANSITION_SEC = 0.8
+MONTAGE_KEN_BURNS_HEADROOM = 1.08
+MONTAGE_KEN_BURNS_PAN_PX = 14
+KEN_BURNS_MOTIONS = ("push_in", "pan_right", "pan_left", "push_in", "pan_up")
+MONTAGE_MOTION_OPTIONS = {
+    "auto": KEN_BURNS_MOTIONS,
+    "push_in": ("push_in",),
+    "pan_left": ("pan_left",),
+    "pan_right": ("pan_right",),
+    "pan_up": ("pan_up",),
+}
+
+# Studio web UI auth (override in production via env)
+STUDIO_USERNAME = os.getenv("STUDIO_USERNAME", "vvluxe")
+STUDIO_PASSWORD = os.getenv("STUDIO_PASSWORD", "vvluxe")
+STUDIO_SECRET_KEY = os.getenv("STUDIO_SECRET_KEY", "vv-luxe-local-dev-secret-change-me")
+SESSION_MAX_AGE_SEC = int(os.getenv("SESSION_MAX_AGE_SEC", "86400"))
+CLIENT_VAULT_TTL_SEC = int(os.getenv("CLIENT_VAULT_TTL_SEC", "14400"))
+LOGIN_RATE_LIMIT = int(os.getenv("LOGIN_RATE_LIMIT", "10"))
+LOGIN_RATE_WINDOW_SEC = int(os.getenv("LOGIN_RATE_WINDOW_SEC", "300"))
+
+# Background job queue
+JOB_QUEUE_MAX_WORKERS = int(os.getenv("JOB_QUEUE_MAX_WORKERS", "3"))
+
+# FFmpeg encoder strategy: auto | videotoolbox | libx264
+FFMPEG_ENCODER_MODE = os.getenv("FFMPEG_ENCODER", "auto")
+
+# Persistent studio state paths
+STUDIO_SETTINGS_PATH = DATA_DIR / "studio_settings.json"
+CONTENT_CALENDAR_PATH = DATA_DIR / "content_calendar.json"
+VINCENT_CHECKLISTS_DIR = DATA_DIR / "vincent_checklists"
+
+# Google Drive integration
+GOOGLE_DRIVE_CLIENT_ID = os.getenv("GOOGLE_DRIVE_CLIENT_ID", "")
+GOOGLE_DRIVE_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET", "")
+GOOGLE_DRIVE_REDIRECT_URI = os.getenv(
+    "GOOGLE_DRIVE_REDIRECT_URI",
+    "http://127.0.0.1:8765/api/studio/drive/oauth/callback",
+)
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", "")
+GOOGLE_DRIVE_MASTER_FOLDER_NAME = os.getenv("GOOGLE_DRIVE_MASTER_FOLDER_NAME", "VV LUXE STUDIO")
+GOOGLE_DRIVE_MASTER_FOLDER_ID = os.getenv(
+    "GOOGLE_DRIVE_MASTER_FOLDER_ID",
+    "1z0DoWAcuOP7FfRZX8WXqfCDJozPhkg9-",
+)
+# Legacy alias — always points at the VV LUXE STUDIO master folder
+GOOGLE_DRIVE_ROOT_FOLDER_ID = os.getenv(
+    "GOOGLE_DRIVE_ROOT_FOLDER_ID",
+    GOOGLE_DRIVE_MASTER_FOLDER_ID,
+)
+GOOGLE_DRIVE_INDEX_PATH = DATA_DIR / "drive_index.json"
+GOOGLE_DRIVE_OAUTH_TOKEN_PATH = DATA_DIR / "drive_oauth_token.json"
+GOOGLE_DRIVE_REFRESH_TOKEN = os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN", "")
+GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+DRIVE_POST_2_COUNT = 8
+
+# Daily backlog batch processor — 3 posts/day from VV LUXE STUDIO Drive
+REVIEW_FOR_POSTING_QUEUE = "Review for Posting"
+REVIEW_FOR_POSTING_DIR = UPLOADS_DIR / "Review_for_Posting"
+DAILY_BACKLOG_POSTS_PER_DAY = int(os.getenv("DAILY_BACKLOG_POSTS_PER_DAY", "3"))
+DAILY_BACKLOG_ENABLED = os.getenv("DAILY_BACKLOG_ENABLED", "1").lower() in ("1", "true", "yes")
+DAILY_BACKLOG_RUN_HOUR_UTC = int(os.getenv("DAILY_BACKLOG_RUN_HOUR_UTC", "14"))  # 6 AM PT ≈ 14 UTC
+DAILY_BACKLOG_SETTINGS_KEY = "daily_backlog_state"
+
+# VV LUXE Studio branding — title + location subtitle
+STUDIO_BRAND_NAME = os.getenv("STUDIO_BRAND_NAME", "VV LUXE Studio")
+STUDIO_TAGLINE = os.getenv("STUDIO_TAGLINE", "Sullivan Portal")
+
+# Tour Portfolio Presentation Mode — color palette filters
+TOUR_COLOR_PALETTES: list[dict[str, str]] = [
+    {"id": "willow_cream", "label": "Willow Green & Cream"},
+    {"id": "black_white", "label": "Black & White"},
+    {"id": "gold_white", "label": "Gold & White"},
+    {"id": "blush_neutrals", "label": "Blush & Luxury Neutrals"},
+]
+
+# Secure client gallery — view-only event access
+CLIENT_GALLERY_DEFAULT_PIN = os.getenv("CLIENT_GALLERY_DEFAULT_PIN", "sullivan")
+CLIENT_GALLERY_PINS_PATH = DATA_DIR / "client_gallery_pins.json"
+
 # Carousel output (4:5 Instagram/LinkedIn)
 CAROUSEL_WIDTH = 1080
 CAROUSEL_HEIGHT = 1350
 
-# Branding defaults
-DEFAULT_LOGO_OPACITY = 0.85
-DEFAULT_LOGO_MARGIN = 48
-DEFAULT_LOGO_ANCHOR = "bottom-right"
+# Branding defaults (montage reels use top-center logo)
+DEFAULT_LOGO_OPACITY = 0.88
+DEFAULT_LOGO_MARGIN = 56
+DEFAULT_LOGO_ANCHOR = "top-center"
+MONTAGE_LOGO_WIDTH_RATIO = 0.26
+LOGO_ANCHORS: list[dict[str, str]] = [
+    {"id": "top-left", "label": "Top Left"},
+    {"id": "top-center", "label": "Top Center"},
+    {"id": "top-right", "label": "Top Right"},
+    {"id": "bottom-left", "label": "Bottom Left"},
+    {"id": "bottom-right", "label": "Bottom Right"},
+    {"id": "center", "label": "Center"},
+]
+WATERMARK_SETTINGS_PATH = DATA_DIR / "watermark_settings.json"
 
-CAPTION_SYSTEM_PROMPT = """You are an elite luxury venue marketing director for VV LUXE, an exclusive event space in Richmond, California. Write a sophisticated, engaging caption for a {category} event showcase. Highlight intentional design, mature elegance, and high-end hospitality. Include clean paragraph spacing, a clear call-to-action to book a venue tour, and relevant high-converting local hashtags (e.g., #RichmondCAEvents #BayAreaVenue #BayAreaEvents #VVLUXE)."""
+# AI Audio & Vibe Matcher — royalty-free track library
+AUDIO_LIBRARY_PATH = DATA_DIR / "audio_library.json"
+AUDIO_LIBRARY_EXTENSIONS = (".mp3", ".wav", ".m4a", ".aac", ".flac")
+AUDIO_VIBES: list[dict[str, str]] = [
+    {
+        "id": "soft_romantic",
+        "label": "Soft Romantic",
+        "description": "Warm strings and gentle piano — perfect for weddings and intimate celebrations.",
+    },
+    {
+        "id": "upbeat_celebration",
+        "label": "Upbeat Celebration",
+        "description": "Bright, energetic rhythms for birthdays, galas, and high-energy moments.",
+    },
+    {
+        "id": "corporate_minimal",
+        "label": "Corporate Minimal",
+        "description": "Clean, modern tones for conferences, brand launches, and professional events.",
+    },
+    {
+        "id": "ambient_luxe",
+        "label": "Ambient Luxe",
+        "description": "Atmospheric textures and subtle beats for venue tours and decor showcases.",
+    },
+]
+
+CAPTION_SYSTEM_PROMPT = """You are an elite luxury event marketing director for Sullivan Portal, an in-house production suite crafting premium social content. Write a sophisticated, engaging caption for a {category} event showcase. Highlight intentional design, mature elegance, and high-end hospitality. Include clean paragraph spacing, a clear call-to-action, and relevant hashtags (e.g., #SullivanPortal #InHouseProduction #LuxuryEvents)."""
 
 VISION_EXTRACTION_PROMPT = """Analyze this high-resolution event venue photograph. Extract specific visual elements into bullet points:
 - Primary and accent color palettes
@@ -164,7 +310,7 @@ VISION_EXTRACTION_PROMPT = """Analyze this high-resolution event venue photograp
 - Lighting ambiance (e.g., warm uplighting, natural sunlight, neon accent)
 - Architectural features (e.g., exposed structure, drapery, outdoor court)"""
 
-CAPTION_ENRICHED_PROMPT = """You are the senior publicist for VV LUXE, an intentional luxury event space in Richmond, California.
+CAPTION_ENRICHED_PROMPT = """You are the senior publicist for Sullivan Portal, an in-house production suite.
 Generate a sophisticated, high-converting social media caption for a {category} post.
 
 Visual Context detected in photo:
@@ -174,8 +320,31 @@ Writing Rules:
 - Highlight the specific visual details observed (colors, decor, lighting) to make the caption ultra-authentic.
 - Maintain a mature, elevated, and welcoming tone.
 - Emphasize bespoke event design and seamless hospitality.
-- Include clean spacing, a call-to-action to schedule a venue walk-through, and relevant local hashtags (#RichmondCAEvents #BayAreaLuxury #BayAreaVenue #VVLUXE).
+- Include clean spacing, a call-to-action, and relevant hashtags (#SullivanPortal #InHouseProduction #LuxuryEvents).
 - Do not output meta-commentary or introductory filler."""
+
+TITLE_BATCH_PROMPT = """You are the creative director for Sullivan Portal, an in-house production suite.
+Analyze this batch of {category} event photos and craft premium Instagram reel copy.
+
+Visual context from the photo batch:
+{visual_context}
+
+Return EXACTLY three lines in this format (no extra text):
+BOLD: <2-4 word punchy headline in ALL CAPS>
+SCRIPT: <2-5 word elegant script-style subtitle in Title Case>
+CAPTION: <One refined sentence for the reel description, max 120 characters>"""
+
+
+def category_slug(name: str) -> str:
+    """Filesystem-safe folder name for an event category."""
+    return name.lower().replace(" ", "_")
+
+
+def category_upload_dir(category: str) -> Path:
+    """Return uploads subdirectory for a category, creating it if needed."""
+    folder = UPLOADS_DIR / category_slug(category)
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 def get_device() -> torch.device:
@@ -189,9 +358,12 @@ def get_device() -> torch.device:
 
 def ensure_directories() -> None:
     """Create runtime directories if missing."""
+    from backend.services.logo_overlay import ensure_default_logo
+
     for path in (
         DATA_DIR,
         UPLOADS_DIR,
+        REVIEW_FOR_POSTING_DIR,
         VIDEOS_DIR,
         CAROUSELS_DIR,
         CAPTIONS_DIR,
@@ -201,3 +373,8 @@ def ensure_directories() -> None:
         AUDIO_DIR,
     ):
         path.mkdir(parents=True, exist_ok=True)
+
+    for category in EVENT_CATEGORIES:
+        category_upload_dir(category)
+
+    ensure_default_logo()

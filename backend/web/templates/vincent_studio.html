@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — Vincent's Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+    <link rel="stylesheet" href="/static/css/drive_picker.css" />
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    {% include "includes/nav.html" %}
+
+    <main class="main-canvas main-canvas-wide">
+      <div class="main-canvas-inner space-y-8">
+      <section class="card-surface rounded-2xl p-6 space-y-5 shadow-luxe">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 class="font-display text-2xl text-sullivan-ink">Vincent's In-House Photography Hub</h2>
+            <p class="text-muted text-sm mt-1">High-speed ingest · 3-Post shot checklist · Ideal Row push</p>
+          </div>
+          <div id="overall-progress" class="text-xs uppercase tracking-wider text-sullivan-green font-medium"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-muted mb-2">Event Name</label>
+            <input
+              id="event-name"
+              type="text"
+              placeholder="e.g. The Johnson Wedding"
+              class="w-full input-luxe px-4 py-3 text-sm"
+            />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs uppercase tracking-wider text-muted mb-2">Category Folder</label>
+            <div id="category-tabs" class="flex flex-wrap gap-2">
+              {% for cat in categories %}
+              <button
+                type="button"
+                data-category="{{ cat }}"
+                class="category-tab px-3 py-1.5 rounded-full text-xs uppercase tracking-wider border border-sullivan-taupe text-muted hover:border-sullivan-green transition bg-white"
+              >
+                {{ cat }}
+              </button>
+              {% endfor %}
+            </div>
+            <input type="hidden" id="selected-category" value="{{ categories[0] }}" />
+          </div>
+        </div>
+        <div class="drive-toolbar pt-2 border-t border-sullivan-taupe">
+          <span data-drive-status class="drive-status-pill drive-status-offline">Drive</span>
+          <button type="button" data-drive-connect data-return-to="/vincent-studio" class="drive-connect-btn">Connect Google Drive</button>
+        </div>
+      </section>
+
+      <!-- Batch uploader -->
+      <section class="card-surface rounded-2xl p-6 space-y-4 shadow-luxe">
+        <h3 class="font-display text-xl text-sullivan-ink">High-Speed Batch Uploader</h3>
+        <p class="text-muted text-sm">Drop multiple files into the active event folder, or assign to a checklist shot.</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-muted mb-2">Assign to Shot (optional)</label>
+            <select id="upload-shot-id" class="w-full input-luxe px-3 py-2 text-sm">
+              <option value="">General batch ingest</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <p id="upload-status" class="text-sm text-sullivan-green hidden"></p>
+          </div>
+        </div>
+
+        <label
+          id="batch-drop-zone"
+          class="block border-2 border-dashed border-sullivan-taupe-dark rounded-xl p-12 text-center cursor-pointer hover:border-sullivan-green hover:bg-sullivan-green/5 transition bg-white shadow-luxe"
+        >
+          <input type="file" id="batch-file-input" multiple accept="image/*,video/*,.jpg,.jpeg,.png,.mp4,.mov" class="hidden" />
+          <p class="text-sullivan-green font-medium">Drop photos &amp; clips here</p>
+          <p class="text-muted text-xs mt-1">Mapped to <span id="upload-target-label">{{ categories[0] }}</span> event folder</p>
+        </label>
+        <div class="drive-inline-actions">
+          <button type="button" data-drive-browse data-drive-mode="multi" data-drive-callback="onDriveImportVincent" class="drive-browse-btn">Browse Drive · Import Batch</button>
+        </div>
+
+        <div id="recent-uploads" class="grid grid-cols-4 sm:grid-cols-6 gap-2 min-h-[60px]"></div>
+      </section>
+
+      <!-- Shot checklist -->
+      <section class="space-y-4">
+        <h3 class="font-display text-xl text-sullivan-ink px-1">Event Shot Checklist</h3>
+
+        <div id="post-1-section" class="space-y-2">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs uppercase tracking-widest text-sullivan-green">Post 1 · Event Cover</span>
+            <span id="prog-post-1" class="text-xs text-sullivan-muted"></span>
+          </div>
+          <div id="checklist-post-1" class="space-y-2"></div>
+        </div>
+
+        <div id="post-2-section" class="space-y-2 mt-6">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs uppercase tracking-widest text-sullivan-green">Post 2 · Details &amp; Decor (8 Core Shots)</span>
+            <span id="prog-post-2" class="text-xs text-sullivan-muted"></span>
+          </div>
+          <div class="progress-bar-track mb-3"><div id="bar-post-2" class="progress-bar-fill" style="width: 0%"></div></div>
+          <div id="checklist-post-2" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+        </div>
+
+        <div id="post-3-section" class="space-y-2 mt-6">
+          <div class="flex items-center justify-between px-1">
+            <span class="text-xs uppercase tracking-widest text-sullivan-green">Post 3 · Reel Assets</span>
+            <span id="prog-post-3" class="text-xs text-sullivan-muted"></span>
+          </div>
+          <div id="checklist-post-3" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+        </div>
+      </section>
+
+      <!-- Push to Ideal Row -->
+      <section class="card-surface rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-luxe">
+        <div>
+          <h3 class="font-display text-lg text-sullivan-ink">Push to Ideal Row Pipeline</h3>
+          <p class="text-muted text-sm mt-1">Copy assigned shots into Post_1 / Post_2 / Post_3 folders for packaging.</p>
+        </div>
+        <div class="flex gap-3">
+          <button type="button" id="save-checklist-btn" class="btn-outline text-sm">Save Progress</button>
+          <button type="button" id="push-ideal-row-btn" class="btn-primary text-sm">Push to Ideal Row →</button>
+        </div>
+      </section>
+      <p id="push-status" class="text-center text-sm text-sullivan-muted hidden"></p>
+      </div>
+    </main>
+
+    {% include "includes/drive_modal.html" %}
+    <script src="/static/js/drive_picker.js"></script>
+    <script src="/static/js/vincent_studio.js"></script>
+  </body>
+</html>

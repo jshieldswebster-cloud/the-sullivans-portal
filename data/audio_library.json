@@ -1,0 +1,81 @@
+{
+  "default_track_id": "soft_romantic__golden_hour",
+  "vibes": [
+    {
+      "id": "soft_romantic",
+      "label": "Soft Romantic",
+      "description": "Warm strings and gentle piano \u2014 perfect for weddings and intimate celebrations.",
+      "tracks": [
+        {
+          "id": "soft_romantic__golden_hour",
+          "title": "Golden Hour",
+          "filename": "soft_romantic/golden_hour.mp3",
+          "vibe_id": "soft_romantic"
+        },
+        {
+          "id": "soft_romantic__velvet_vows",
+          "title": "Velvet Vows",
+          "filename": "soft_romantic/velvet_vows.mp3",
+          "vibe_id": "soft_romantic"
+        }
+      ]
+    },
+    {
+      "id": "upbeat_celebration",
+      "label": "Upbeat Celebration",
+      "description": "Bright, energetic rhythms for birthdays, galas, and high-energy moments.",
+      "tracks": [
+        {
+          "id": "upbeat_celebration__champagne_toast",
+          "title": "Champagne Toast",
+          "filename": "upbeat_celebration/champagne_toast.mp3",
+          "vibe_id": "upbeat_celebration"
+        },
+        {
+          "id": "upbeat_celebration__dance_floor",
+          "title": "Dance Floor",
+          "filename": "upbeat_celebration/dance_floor.mp3",
+          "vibe_id": "upbeat_celebration"
+        }
+      ]
+    },
+    {
+      "id": "corporate_minimal",
+      "label": "Corporate Minimal",
+      "description": "Clean, modern tones for conferences, brand launches, and professional events.",
+      "tracks": [
+        {
+          "id": "corporate_minimal__boardroom_pulse",
+          "title": "Boardroom Pulse",
+          "filename": "corporate_minimal/boardroom_pulse.mp3",
+          "vibe_id": "corporate_minimal"
+        },
+        {
+          "id": "corporate_minimal__summit_drive",
+          "title": "Summit Drive",
+          "filename": "corporate_minimal/summit_drive.mp3",
+          "vibe_id": "corporate_minimal"
+        }
+      ]
+    },
+    {
+      "id": "ambient_luxe",
+      "label": "Ambient Luxe",
+      "description": "Atmospheric textures and subtle beats for venue tours and decor showcases.",
+      "tracks": [
+        {
+          "id": "ambient_luxe__marble_hall",
+          "title": "Marble Hall",
+          "filename": "ambient_luxe/marble_hall.mp3",
+          "vibe_id": "ambient_luxe"
+        },
+        {
+          "id": "ambient_luxe__candlelight",
+          "title": "Candlelight",
+          "filename": "ambient_luxe/candlelight.mp3",
+          "vibe_id": "ambient_luxe"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+/* AI Audio & Vibe Matcher */
+
+.audio-vibe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 1.25rem;
+}
+
+.audio-vibe-card {
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.audio-vibe-header {
+  padding: 1.25rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--sullivan-taupe);
+}
+
+.audio-track-list {
+  padding: 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.audio-track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.audio-track-row-selected {
+  border-color: var(--sullivan-green);
+  box-shadow: var(--shadow-luxe);
+}
+
+.audio-track-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.audio-track-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--sullivan-ink);
+}
+
+.audio-track-duration {
+  font-size: 0.7rem;
+  color: var(--sullivan-muted);
+  margin-top: 0.15rem;
+}
+
+.audio-icon-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.audio-select-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--sullivan-green);
+  color: var(--sullivan-green);
+  background: transparent;
+}
+
+.audio-select-btn-active {
+  background: var(--sullivan-green);
+  color: var(--sullivan-white);
+}
+
+.audio-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.audio-now-playing {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sullivan-muted);
+}
+
+.audio-now-playing strong {
+  display: block;
+  font-size: 1rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--sullivan-ink);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}

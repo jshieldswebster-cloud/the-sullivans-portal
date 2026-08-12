@@ -1,0 +1,241 @@
+/* Drive review queue on New Post dashboard */
+
+.drive-review-section {
+  border: 1px solid var(--sullivan-taupe);
+  border-radius: 1rem;
+  background: var(--sullivan-white);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 8px 24px rgba(13, 15, 14, 0.04);
+}
+
+.drive-review-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.drive-review-header h2 {
+  font-family: var(--font-display, "Cormorant Garamond", serif);
+  font-size: 1.25rem;
+  color: var(--sullivan-ink);
+}
+
+.drive-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.drive-sync-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--sullivan-green);
+  color: #fff;
+  border: none;
+}
+
+.drive-sync-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.drive-sync-status {
+  font-size: 0.75rem;
+  color: var(--sullivan-muted);
+}
+
+.drive-review-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--sullivan-muted);
+  font-size: 0.875rem;
+}
+
+.drive-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.drive-review-card {
+  border: 1px solid var(--sullivan-taupe);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.drive-review-card:hover,
+.drive-review-card.selected {
+  border-color: var(--sullivan-green);
+  box-shadow: 0 4px 16px rgba(47, 82, 51, 0.12);
+}
+
+.drive-review-thumb {
+  aspect-ratio: 4 / 5;
+  background: var(--sullivan-porcelain);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.drive-review-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.drive-review-thumb-placeholder {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sullivan-muted);
+}
+
+.drive-review-body {
+  padding: 0.75rem 0.875rem 1rem;
+}
+
+.drive-review-body h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--sullivan-ink);
+  margin-bottom: 0.25rem;
+}
+
+.drive-review-meta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sullivan-muted);
+}
+
+.drive-review-warn {
+  margin-top: 0.5rem;
+  font-size: 0.68rem;
+  color: #9a6b00;
+}
+
+.drive-review-detail {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--sullivan-taupe);
+}
+
+.drive-review-detail.hidden {
+  display: none;
+}
+
+.drive-review-slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.drive-review-slot {
+  text-align: center;
+}
+
+.drive-review-slot-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sullivan-muted);
+  margin-bottom: 0.35rem;
+}
+
+.drive-review-slot-count {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--sullivan-green);
+}
+
+.drive-review-preview-row {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.drive-review-preview-row img {
+  width: 3.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 0.35rem;
+  flex-shrink: 0;
+}
+
+.drive-review-audio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.drive-review-audio select {
+  flex: 1;
+  min-width: 12rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--sullivan-taupe);
+  font-size: 0.8rem;
+}
+
+.drive-approve-btn {
+  padding: 0.65rem 1.25rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--sullivan-green);
+  color: #fff;
+  border: none;
+}
+
+.drive-sync-btn-secondary {
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  border: 1px solid var(--sullivan-green);
+}
+
+.drive-review-primary {
+  border-color: var(--sullivan-green);
+  background: linear-gradient(180deg, #fff 0%, #f5f9f5 100%);
+}
+
+.drive-review-collapsed h2 {
+  font-size: 1rem;
+}
+
+.drive-watermark-link {
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+}
+
+.drive-review-card .drive-review-badge {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(47, 82, 51, 0.1);
+  color: var(--sullivan-green);
+}
+
+.drive-review-card .drive-review-badge.rendering {
+  background: rgba(154, 107, 0, 0.12);
+  color: #9a6b00;
+}

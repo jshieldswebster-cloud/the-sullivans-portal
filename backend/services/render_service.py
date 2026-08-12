@@ -11,6 +11,7 @@ from backend.models.carousel_compositor import CarouselCompositor
 from backend.models.depth_engine import DepthParallaxEngine
 import backend.services.video_service  # noqa: F401 — DepthEngine render compat
 from backend.services.caption_service import CaptionService
+from backend.services.montage_service import MontageService
 
 
 class RenderService:
@@ -20,6 +21,7 @@ class RenderService:
         carousel: CarouselCompositor | None = None,
         caption_engine: CaptionEngine | None = None,
         caption_service: CaptionService | None = None,
+        montage_service: MontageService | None = None,
     ) -> None:
         self.depth = depth_engine or DepthParallaxEngine()
         self.carousel = carousel or CarouselCompositor()
@@ -27,6 +29,7 @@ class RenderService:
         self.caption_service = caption_service or CaptionService(
             caption_engine=self.captions
         )
+        self.montage = montage_service or MontageService()
 
     def _paths_for_category(self, category: str) -> list[str]:
         rows = list_images(category=category)
@@ -119,6 +122,50 @@ class RenderService:
             update_job(job_id, status="failed", error=str(exc))
             raise
 
+    async def generate_montage(
+        self,
+        image_paths: list[str],
+        *,
+        category: str | None = None,
+        audio_path: str | None = None,
+        clip_duration_sec: float = 4.0,
+        transition_sec: float = 0.8,
+    ) -> dict:
+        """Assemble multi-photo reel with Ken Burns + cross-fade (no depth warp)."""
+        job_id = create_job("montage", image_paths, category=category)
+        update_job(job_id, status="running")
+        try:
+            from backend.services.montage_service import MontageParams
+
+            self.montage.params = MontageParams(
+                clip_duration_sec=clip_duration_sec,
+                transition_sec=transition_sec,
+            )
+            safe = (category or "montage").lower().replace(" ", "_")
+            output_path = None
+            if category:
+                from backend.config import VIDEOS_DIR
+
+                output_path = VIDEOS_DIR / f"{safe}_montage.mp4"
+
+            result = self.montage.assemble(
+                image_paths,
+                output_path=output_path,
+                audio_path=audio_path,
+            )
+            update_job(job_id, status="completed", output_path=result.output_path)
+            return {
+                "output_path": result.output_path,
+                "clip_count": result.clip_count,
+                "total_duration_sec": result.total_duration_sec,
+                "width": result.width,
+                "height": result.height,
+                "fps": result.fps,
+            }
+        except Exception as exc:
+            update_job(job_id, status="failed", error=str(exc))
+            raise
+
     async def generate_category_bundle(self, category: str) -> dict:
         """Generate carousel + enriched caption + reel from best-scoring image."""
         paths = self._paths_for_category(category)
@@ -128,15 +175,16 @@ class RenderService:
         hero_image = paths[0]
         carousel_task = self.generate_carousel(category)
         caption_task = self.generate_caption(category, image_path=hero_image)
-        reel_task = self.generate_reel(hero_image, category)
+        montage_task = self.generate_montage(paths, category=category)
 
-        carousel, caption, reel = await asyncio.gather(
-            carousel_task, caption_task, reel_task
+        carousel, caption, montage = await asyncio.gather(
+            carousel_task, caption_task, montage_task
         )
         return {
             "category": category,
             "carousel_slides": carousel,
             "caption": caption,
-            "reel_path": reel,
-            "source_image": hero_image,
+            "reel_path": montage["output_path"],
+            "montage": montage,
+            "source_images": paths,
         }

@@ -19,6 +19,8 @@ output/*
 !output/debug/
 !output/debug/.gitkeep
 data/*.db
+data/drive_oauth_token.json
+data/drive_index.json
 
 # OS
 .DS_Store

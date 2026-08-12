@@ -1,0 +1,11 @@
+{
+  "event_categories": [
+    "Birthdays",
+    "Weddings",
+    "Baby Showers",
+    "Venue",
+    "Grad Party",
+    "Corporate"
+  ],
+  "source": "database"
+}

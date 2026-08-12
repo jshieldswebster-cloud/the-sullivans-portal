@@ -1,0 +1,387 @@
+/* Tour Portfolio Presentation Mode — tablet / smart screen */
+
+.tour-body {
+  min-height: 100dvh;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tour-lobby {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 2.5rem;
+}
+
+.tour-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.tour-exit-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-luxe);
+}
+
+.tour-filters {
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.tour-filter-group + .tour-filter-group {
+  margin-top: 1rem;
+}
+
+.tour-filter-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--sullivan-muted);
+  margin-bottom: 0.5rem;
+}
+
+.tour-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tour-chip {
+  padding: 0.55rem 0.9rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  transition: all 0.2s;
+  min-height: 44px;
+}
+
+.tour-chip-active {
+  border-color: var(--sullivan-green);
+  color: var(--sullivan-green);
+  background: rgba(47, 82, 51, 0.08);
+}
+
+.tour-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .tour-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.25rem;
+  }
+}
+
+.tour-card {
+  border: 1px solid var(--sullivan-taupe);
+  border-radius: 1rem;
+  overflow: hidden;
+  background: var(--sullivan-white);
+  box-shadow: var(--shadow-luxe);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  text-align: left;
+  padding: 0;
+  min-height: 44px;
+}
+
+.tour-card:active {
+  transform: scale(0.98);
+}
+
+.tour-card:hover {
+  box-shadow: var(--shadow-luxe-lg);
+}
+
+.tour-card-thumb {
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  object-fit: cover;
+  background: var(--sullivan-cream);
+}
+
+.tour-card-body {
+  padding: 0.75rem 0.85rem 0.9rem;
+}
+
+.tour-card-title {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 1.05rem;
+  color: var(--sullivan-ink);
+  line-height: 1.2;
+}
+
+.tour-card-meta {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sullivan-muted);
+  margin-top: 0.35rem;
+}
+
+.tour-palette-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.45rem;
+}
+
+.tour-palette-tag {
+  font-size: 0.55rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 9999px;
+  background: rgba(47, 82, 51, 0.1);
+  color: var(--sullivan-green);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Presentation stage */
+.tour-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--sullivan-porcelain);
+  display: flex;
+  flex-direction: column;
+}
+
+.tour-stage-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--sullivan-taupe);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.tour-stage-btn {
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  font-size: 0.8rem;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.tour-stage-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  background: var(--sullivan-white);
+  border-bottom: 1px solid var(--sullivan-taupe);
+}
+
+.tour-tab {
+  flex: 1;
+  padding: 0.65rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sullivan-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-height: 44px;
+}
+
+.tour-tab-active {
+  border-color: var(--sullivan-green);
+  color: var(--sullivan-green);
+  background: rgba(47, 82, 51, 0.08);
+  font-weight: 600;
+}
+
+.tour-panels {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--sullivan-forest);
+}
+
+.tour-panel {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+  display: flex;
+  flex-direction: column;
+}
+
+.tour-panel-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tour-swipe-zone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  position: relative;
+  user-select: none;
+}
+
+.tour-hero-img {
+  max-width: 100%;
+  max-height: calc(100dvh - 220px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-luxe-lg);
+  background: var(--sullivan-white);
+}
+
+.tour-panel-hint {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--sullivan-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tour-carousel-viewport {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.tour-carousel-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.tour-round-btn {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-luxe);
+}
+
+.tour-play-btn {
+  font-size: 1.1rem;
+}
+
+.tour-dots {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.tour-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--sullivan-taupe-dark);
+  border: none;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tour-dot-active {
+  background: var(--sullivan-green);
+  transform: scale(1.2);
+}
+
+.tour-reel-zone {
+  padding-bottom: 0.5rem;
+}
+
+.tour-reel-video {
+  max-width: 100%;
+  max-height: calc(100dvh - 280px);
+  border-radius: 0.75rem;
+  background: #000;
+  box-shadow: var(--shadow-luxe-lg);
+}
+
+.tour-reel-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: min(100%, 28rem);
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+}
+
+.tour-speed-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tour-reel-placeholder {
+  text-align: center;
+  padding: 1rem;
+}
+
+.tour-reel-stills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 1rem;
+  max-width: 24rem;
+}
+
+.tour-reel-stills img {
+  width: 100%;
+  aspect-ratio: 4/5;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid var(--sullivan-taupe);
+}
+
+.tour-stage:fullscreen {
+  background: #000;
+}
+
+.tour-stage:fullscreen .tour-panels {
+  background: #000;
+}
+
+.tour-stage:fullscreen .tour-hero-img,
+.tour-stage:fullscreen .tour-reel-video {
+  max-height: calc(100dvh - 180px);
+}
+
+.hidden {
+  display: none !important;
+}

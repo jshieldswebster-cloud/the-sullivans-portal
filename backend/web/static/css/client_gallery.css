@@ -1,0 +1,209 @@
+/* Secure Client Gallery — view-only presentation */
+
+.client-body {
+  min-height: 100dvh;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.client-gate {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--sullivan-porcelain);
+}
+
+.client-gate-card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 2rem 1.75rem;
+  border-radius: 1.25rem;
+}
+
+.client-view {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--sullivan-porcelain);
+}
+
+.client-view-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+}
+
+.client-exit-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  font-size: 0.8rem;
+  font-weight: 500;
+  min-height: 44px;
+}
+
+.client-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  background: var(--sullivan-white);
+  border-bottom: 1px solid var(--sullivan-taupe);
+}
+
+.client-tab {
+  flex: 1;
+  padding: 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sullivan-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  min-height: 44px;
+}
+
+.client-tab-active {
+  border-color: var(--sullivan-green);
+  color: var(--sullivan-green);
+  background: rgba(47, 82, 51, 0.07);
+  font-weight: 600;
+}
+
+.client-stage {
+  flex: 1;
+  position: relative;
+  background: var(--sullivan-forest);
+}
+
+.client-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1rem 0.5rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.client-panel-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.media-shield {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: calc(100dvh - 220px);
+}
+
+.media-shield-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
+  cursor: default;
+}
+
+.protected-media {
+  max-width: 100%;
+  max-height: calc(100dvh - 220px);
+  object-fit: contain;
+  border-radius: 0.65rem;
+  box-shadow: var(--shadow-luxe-lg);
+  background: var(--sullivan-white);
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: none !important;
+}
+
+.protected-video {
+  background: #000;
+}
+
+.client-hint {
+  margin-top: 0.85rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sullivan-muted);
+}
+
+.client-carousel-bar,
+.client-reel-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.5rem;
+}
+
+.client-reel-bar {
+  width: min(100%, 24rem);
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+}
+
+.client-round-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+  color: var(--sullivan-green);
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-luxe);
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.client-reel-fallback {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  max-width: 18rem;
+}
+
+.client-reel-fallback img {
+  width: 100%;
+  aspect-ratio: 4/5;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  user-select: none;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.client-footer {
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--sullivan-taupe);
+  background: var(--sullivan-white);
+}
+
+.client-protected,
+.client-protected *:not(input):not(button):not(select):not(textarea) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hidden {
+  display: none !important;
+}

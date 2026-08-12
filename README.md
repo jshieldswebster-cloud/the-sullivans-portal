@@ -98,10 +98,15 @@ python backend/test_classifier.py ./test-photos --verbose --threshold 0.35
 
 **Render a 2.5D parallax reel:**
 ```bash
-**Test 2.5D depth parallax render:**
+**Assemble multi-photo montage reel (recommended):**
+```bash
+python backend/scripts/test_montage.py uploads/*.png --duration 4 --transition 0.8
+python backend/scripts/test_montage.py photo1.jpg photo2.jpg photo3.jpg --audio assets/audio/track.mp3
+```
+
+**Legacy: single-image 2.5D depth parallax (deprecated — may show warping):**
 ```bash
 python backend/scripts/test_depth_render.py ./uploads/photo.jpg --motion push_in --duration 5
-python backend/scripts/test_depth_render.py ./photo.jpg --motion pan_left_right --fps 60
 ```
 
 **Render reel (production CLI):**
@@ -150,14 +155,48 @@ export DEPTH_MODEL_ID=depth-anything/Depth-Anything-V2-Small-hf
 | POST | `/api/models/load` | Eager-load ML models |
 | POST | `/api/upload/batch` | Batch upload + classify |
 | GET | `/api/upload/images` | List categorized images |
-| POST | `/api/render/reel` | Single-image 2.5D reel |
+| POST | `/api/render/montage` | Multi-photo Ken Burns + xfade reel (1080×1920) |
+| POST | `/api/render/reel` | Legacy single-image 2.5D depth reel |
 | POST | `/api/render/carousel` | 4:5 slide deck per category |
 | POST | `/api/render/bundle` | Reel + carousel + caption |
 | POST | `/api/captions/extract` | Moondream2/Florence-2 visual extraction |
 | POST | `/api/captions/generate-enriched` | Full classify + extract + caption |
 | POST | `/api/captions/generate` | Caption (optionally from filepath) |
 
-## 2.5D Video Engine
+## Studio Web UI
+
+Launch the backend and open the luxury dashboard in your browser:
+
+```bash
+source .venv/bin/activate
+python backend/main.py
+# → http://127.0.0.1:8765/login
+```
+
+Default credentials (override via env): `vvluxe` / `vvluxe`
+
+```bash
+export STUDIO_USERNAME=your_user
+export STUDIO_PASSWORD=your_pass
+export STUDIO_SECRET_KEY=long-random-secret
+```
+
+Features: drag-and-drop multi-photo upload, Ken Burns montage settings, async FFmpeg progress, in-browser reel preview + download.
+
+## Multi-Image Montage Engine (Primary)
+
+| Module | Role |
+|--------|------|
+| `backend/services/montage_service.py` | Ken Burns per photo + FFmpeg xfade assembly |
+| `backend/scripts/test_montage.py` | CLI for batch photo → vertical reel |
+
+- **No depth warping** — crisp pre-edited photos with subtle zoom/pan only
+- Per-clip Ken Burns (1.0→1.08×) with alternating pan directions
+- Seamless **cross-fade** transitions via FFmpeg `xfade`
+- Output: **1080×1920** @ 18Mbps HEVC VideoToolbox + BT.709
+- Optional background audio trimmed to total montage duration
+
+## Legacy 2.5D Depth Engine
 
 | Module | Role |
 |--------|------|

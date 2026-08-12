@@ -17,20 +17,34 @@ import torch
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 
 # Allow running as `python backend/main.py` or `uvicorn backend.main:app`
 ROOT = Path(__file__).resolve().parent.parent
+WEB_DIR = Path(__file__).resolve().parent / "web"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.config import ensure_directories, get_device  # noqa: E402
-from backend.database import init_db  # noqa: E402
+from backend.config import (  # noqa: E402
+    AUDIO_DIR,
+    JOB_QUEUE_MAX_WORKERS,
+    LOGOS_DIR,
+    CAROUSELS_DIR,
+    SESSION_MAX_AGE_SEC,
+    STUDIO_SECRET_KEY,
+    UPLOADS_DIR,
+    VIDEOS_DIR,
+    ensure_directories,
+    get_device,
+)
+from backend.database import count_running_studio_jobs, init_db  # noqa: E402
 from backend.models.caption_engine import CaptionEngine
 from backend.models.caption_enricher import CaptionEnricher
 from backend.models.carousel_compositor import CarouselCompositor
 from backend.models.classifier import EventClassifier
 from backend.models.depth_engine import DepthParallaxEngine
-from backend.routers import captions, classify, render, upload  # noqa: E402
+from backend.routers import captions, classify, render, studio, upload  # noqa: E402
 from backend.services.caption_service import CaptionService  # noqa: E402
 from backend.services.render_service import RenderService  # noqa: E402
 from backend.services.upload_service import UploadService  # noqa: E402
@@ -74,6 +88,35 @@ def initialize_models(*, eager: bool = False) -> None:
     """Load ML models. Set eager=True to load all at startup."""
     ensure_directories()
     init_db()
+
+    from backend.services.audio_library_service import AudioLibraryService
+    from backend.services.ffmpeg_diagnostics import run_ffmpeg_diagnostics
+    from backend.services.job_queue import job_manager
+    from backend.services.studio_state_service import StudioStateService
+    from backend.workers.montage_worker import run_montage_job
+    from backend.workers.zip_worker import run_zip_export_job
+    from backend.workers.drive_sync_worker import run_drive_sync_job
+    from backend.services.daily_backlog_worker import (
+        daily_backlog_scheduler,
+        run_daily_backlog_job,
+    )
+
+    AudioLibraryService().bootstrap_tracks()
+    StudioStateService().bootstrap()
+    ffmpeg_diag = run_ffmpeg_diagnostics(test_encode=True)
+    if not ffmpeg_diag.ffmpeg_available:
+        logger.error("FFmpeg unavailable — video rendering will fail")
+    elif ffmpeg_diag.probe_errors:
+        for err in ffmpeg_diag.probe_errors:
+            logger.warning("FFmpeg diagnostic: %s", err)
+
+    job_manager.register("montage", run_montage_job)
+    job_manager.register("zip_export", run_zip_export_job)
+    job_manager.register("drive_sync", run_drive_sync_job)
+    job_manager.register("daily_backlog", run_daily_backlog_job)
+    daily_backlog_scheduler.start()
+    logger.info("Job queue ready (%d workers)", JOB_QUEUE_MAX_WORKERS)
+
     logger.info("PyTorch device: %s", app_state.device)
     logger.info("MPS available: %s", torch.backends.mps.is_available())
 
@@ -100,11 +143,17 @@ async def lifespan(app: FastAPI):
     eager = app.state.eager_load if hasattr(app.state, "eager_load") else False
     initialize_models(eager=eager)
     yield
+    from backend.services.job_queue import job_manager
+    from backend.services.daily_backlog_worker import daily_backlog_scheduler
+
+    job_manager.shutdown(wait=True)
+    daily_backlog_scheduler.stop()
+    logger.info("Application shutdown complete")
 
 
 app = FastAPI(
     title="VV LUXE Studio API",
-    description="Local AI pipeline for venue content production",
+    description="VV LUXE Studio · Sullivan Portal — in-house content production",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -116,22 +165,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SessionMiddleware, secret_key=STUDIO_SECRET_KEY, max_age=SESSION_MAX_AGE_SEC)
 
+app.include_router(studio.router)
+app.include_router(studio.api)
 app.include_router(upload.router)
 app.include_router(classify.router)
 app.include_router(render.router)
 app.include_router(captions.router)
 
+app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
+app.mount("/media/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+app.mount("/media/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="videos")
+app.mount("/media/carousels", StaticFiles(directory=str(CAROUSELS_DIR)), name="carousels")
+app.mount("/media/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
+app.mount("/media/logos", StaticFiles(directory=str(LOGOS_DIR)), name="logos")
+
 
 @app.get("/api/health")
 async def health():
+    from backend.services.ffmpeg_diagnostics import get_diagnostics
+    from backend.services.job_queue import job_manager
+
     ollama_ok = await app_state.caption_engine.health_check()
+    ffmpeg = get_diagnostics()
     return {
         "status": "ok",
         "device": str(app_state.device),
         "mps": torch.backends.mps.is_available(),
         "models_loaded": app_state.models_loaded,
         "ollama_available": ollama_ok,
+        "ffmpeg": ffmpeg.to_dict() if ffmpeg else None,
+        "jobs_running": count_running_studio_jobs(),
+        "job_workers": JOB_QUEUE_MAX_WORKERS,
     }
 
 
@@ -154,7 +220,7 @@ if __name__ == "__main__":
     app.state.eager_load = True
     uvicorn.run(
         "backend.main:app",
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=8765,
         reload=False,
         factory=False,

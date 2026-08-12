@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — Watermark Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+    <link rel="stylesheet" href="/static/css/watermark.css" />
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    {% include "includes/nav.html" %}
+
+    <main class="main-canvas main-canvas-wide">
+      <div class="main-canvas-inner space-y-6">
+        <header>
+          <p class="text-xs uppercase tracking-[0.2em] text-sullivan-muted">Reel Pipeline</p>
+          <h1 class="font-display text-3xl text-sullivan-ink mt-1">Watermark Studio</h1>
+          <p class="text-muted text-sm mt-2 max-w-2xl">
+            Fine-tune your official logo overlay. Settings pass directly into the FFmpeg filter chain for every rendered reel.
+          </p>
+        </header>
+
+        <div class="wm-layout">
+          <section class="card-surface shadow-luxe rounded-2xl p-6 wm-preview-wrap">
+            <p class="text-xs uppercase tracking-widest text-muted">Live Preview · 9:16</p>
+            <div id="wm-preview-frame" class="wm-preview-frame">
+              <div class="wm-preview-bg"></div>
+              <img id="wm-preview-logo" class="wm-preview-logo" alt="Logo preview" draggable="false" />
+            </div>
+            <p class="text-xs text-muted text-center">Preview mirrors FFmpeg overlay positioning</p>
+          </section>
+
+          <aside class="card-surface shadow-luxe rounded-2xl p-6 wm-controls">
+            <div class="wm-control-block">
+              <label>Logo Asset</label>
+              <div id="wm-logo-picker" class="wm-logo-picker"></div>
+            </div>
+
+            <div class="wm-control-block">
+              <label for="wm-opacity">Opacity · <span id="wm-opacity-val">88%</span></label>
+              <input type="range" id="wm-opacity" min="5" max="100" value="88" class="w-full accent-[#2F5233]" />
+            </div>
+
+            <div class="wm-control-block">
+              <label for="wm-scale">Scale · <span id="wm-scale-val">26%</span></label>
+              <input type="range" id="wm-scale" min="8" max="50" value="26" class="w-full accent-[#2F5233]" />
+            </div>
+
+            <div class="wm-control-block">
+              <label>Placement</label>
+              <div id="wm-anchor-grid" class="wm-anchor-grid">
+                {% for anchor in logo_anchors %}
+                <button type="button" class="wm-anchor-btn" data-anchor="{{ anchor.id }}">{{ anchor.label }}</button>
+                {% endfor %}
+              </div>
+            </div>
+
+            <button type="button" id="wm-save-btn" class="btn-primary w-full py-3 text-sm">Save for Reels</button>
+            <p id="wm-save-status" class="wm-save-status"></p>
+          </aside>
+        </div>
+      </div>
+    </main>
+
+    <script src="/static/js/watermark.js"></script>
+  </body>
+</html>

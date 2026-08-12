@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -7,9 +11,9 @@ router = APIRouter(prefix="/api/captions", tags=["captions"])
 
 
 class CaptionRequest(BaseModel):
-    category: str | None = None
-    filepath: str | None = None
-    image_context: str | None = None
+    category: Optional[str] = None
+    filepath: Optional[str] = None
+    image_context: Optional[str] = None
 
 
 @router.get("/health")

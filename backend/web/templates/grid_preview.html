@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — 9-Grid Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    {% include "includes/nav.html" %}
+
+    <main class="main-canvas main-canvas-narrow">
+      <div class="main-canvas-inner">
+      <div class="mb-6">
+        <h2 class="font-display text-2xl text-sullivan-ink">Instagram 9-Grid</h2>
+        <p class="text-muted text-sm mt-1">Preview your feed aesthetic at a glance</p>
+      </div>
+
+      <div class="flex flex-wrap gap-3 mb-8">
+        <button data-category="" class="grid-filter active-filter px-4 py-2 rounded-full text-xs uppercase tracking-wider border border-sullivan-green/40 text-sullivan-green">All</button>
+        {% for cat in categories %}
+        <button data-category="{{ cat }}" class="grid-filter px-4 py-2 rounded-full text-xs uppercase tracking-wider border border-sullivan-taupe text-muted hover:border-sullivan-green/40 transition bg-white">{{ cat }}</button>
+        {% endfor %}
+      </div>
+
+      <div class="card-surface rounded-2xl p-4 sm:p-6 shadow-luxe-lg">
+        <div id="instagram-grid" class="grid grid-cols-3 gap-1 sm:gap-1.5 aspect-square">
+          {% for i in range(9) %}
+          <div class="grid-cell aspect-square bg-sullivan-cream border border-sullivan-taupe rounded-sm overflow-hidden relative group" data-slot="{{ i }}">
+            <div class="empty-slot absolute inset-0 flex items-center justify-center text-muted/40 text-xs">+</div>
+          </div>
+          {% endfor %}
+        </div>
+        <p id="grid-caption" class="text-center text-muted text-sm mt-5">Loading recent assets…</p>
+      </div>
+
+      <p class="text-center text-muted text-xs mt-8">
+        Click any cell to swap it with another · Tap-to-select reordering
+      </p>
+      </div>
+    </main>
+
+    <script src="/static/js/grid_preview.js"></script>
+  </body>
+</html>

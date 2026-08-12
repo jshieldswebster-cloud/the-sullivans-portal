@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ brand_name }} — Sign In</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+  </head>
+  <body class="min-h-screen bg-sullivan-porcelain font-sans text-sullivan-ink antialiased">
+    <div class="min-h-screen flex items-center justify-center px-6">
+      <div class="w-full max-w-md">
+        <div class="text-center mb-10">
+          <h1 class="font-display text-4xl text-sullivan-ink">{{ brand_name }}</h1>
+          <p class="text-sullivan-gold font-display text-xl italic mt-2">{{ brand_tagline }}</p>
+        </div>
+
+        <div class="card-surface rounded-2xl p-8 shadow-luxe-lg">
+          {% if error %}
+          <div class="mb-6 px-4 py-3 rounded-lg bg-red-950/20 border border-red-800/30 text-red-800 text-sm">
+            {{ error }}
+          </div>
+          {% endif %}
+
+          <form method="post" action="/login" class="space-y-5">
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-muted mb-2">Username</label>
+              <input
+                type="text"
+                name="username"
+                required
+                autocomplete="username"
+                class="w-full input-luxe px-4 py-3 text-sm"
+              />
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-muted mb-2">Password</label>
+              <input
+                type="password"
+                name="password"
+                required
+                autocomplete="current-password"
+                class="w-full input-luxe px-4 py-3 text-sm"
+              />
+            </div>
+            <button type="submit" class="w-full py-3 rounded-lg btn-primary text-sm">Enter Studio</button>
+          </form>
+        </div>
+
+        <p class="text-center text-sullivan-muted text-xs mt-8 tracking-wide">
+          {{ brand_name }} · Designed with love by: JVS
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

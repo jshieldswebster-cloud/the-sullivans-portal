@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>{{ brand_name }} — Tour Portfolio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    {% include "includes/head_theme.html" %}
+    <link rel="stylesheet" href="/static/css/tour_mode.css" />
+  </head>
+  <body class="tour-body bg-sullivan-forest text-sullivan-ink antialiased">
+    <!-- Lobby: filters + portfolio grid -->
+    <div id="tour-lobby" class="tour-lobby">
+      <header class="tour-topbar">
+        <div>
+          <p class="text-xs uppercase tracking-[0.2em] text-sullivan-muted">Sullivan Portal</p>
+          <h1 class="font-display text-2xl text-sullivan-ink">Tour Portfolio</h1>
+        </div>
+        <a href="/dashboard" class="tour-exit-btn">Exit</a>
+      </header>
+
+      <section class="tour-filters card-surface shadow-luxe">
+        <div class="tour-filter-group">
+          <p class="tour-filter-label">Event Type</p>
+          <div id="filter-category" class="tour-chip-row">
+            <button type="button" class="tour-chip tour-chip-active" data-category="">All Events</button>
+            {% for cat in categories %}
+            <button type="button" class="tour-chip" data-category="{{ cat }}">{{ cat }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="tour-filter-group">
+          <p class="tour-filter-label">Color Palette</p>
+          <div id="filter-palette" class="tour-chip-row">
+            <button type="button" class="tour-chip tour-chip-active" data-palette="">All Palettes</button>
+            {% for pal in color_palettes %}
+            <button type="button" class="tour-chip" data-palette="{{ pal.id }}">{{ pal.label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <p id="tour-grid-caption" class="text-sm text-muted px-1">Loading portfolios…</p>
+      <div id="tour-grid" class="tour-grid"></div>
+    </div>
+
+    <!-- Full-screen presentation -->
+    <div id="tour-stage" class="tour-stage hidden" aria-hidden="true">
+      <div class="tour-stage-top">
+        <button type="button" id="tour-back-btn" class="tour-stage-btn">← Grid</button>
+        <div class="text-center flex-1 min-w-0 px-2">
+          <p id="stage-category" class="text-xs uppercase tracking-widest text-sullivan-gold"></p>
+          <h2 id="stage-event-name" class="font-display text-lg truncate text-sullivan-ink"></h2>
+        </div>
+        <button type="button" id="tour-fullscreen-btn" class="tour-stage-btn">Full</button>
+      </div>
+
+      <nav id="stage-tabs" class="tour-stage-tabs">
+        <button type="button" class="tour-tab tour-tab-active" data-panel="cover">Cover</button>
+        <button type="button" class="tour-tab" data-panel="details">Details <span id="detail-count-badge"></span></button>
+        <button type="button" class="tour-tab" data-panel="reel">Reel</button>
+      </nav>
+
+      <div id="tour-panels" class="tour-panels">
+        <!-- Cover -->
+        <section id="panel-cover" class="tour-panel tour-panel-active">
+          <div id="cover-swipe" class="tour-swipe-zone">
+            <img id="stage-cover-img" src="" alt="Event cover" class="tour-hero-img" />
+            <p class="tour-panel-hint">Swipe left for detail photos →</p>
+          </div>
+        </section>
+
+        <!-- 8-photo carousel -->
+        <section id="panel-details" class="tour-panel">
+          <div id="details-swipe" class="tour-swipe-zone">
+            <div class="tour-carousel-viewport">
+              <img id="stage-detail-img" src="" alt="Detail photo" class="tour-hero-img" />
+            </div>
+            <div class="tour-carousel-controls">
+              <button type="button" id="detail-prev" class="tour-round-btn">‹</button>
+              <span id="detail-counter" class="text-sm text-sullivan-ink font-medium">1 / 8</span>
+              <button type="button" id="detail-next" class="tour-round-btn">›</button>
+            </div>
+            <div id="detail-dots" class="tour-dots"></div>
+          </div>
+        </section>
+
+        <!-- Reel -->
+        <section id="panel-reel" class="tour-panel">
+          <div id="reel-swipe" class="tour-swipe-zone tour-reel-zone">
+            <video id="stage-reel-video" class="tour-reel-video" playsinline preload="metadata"></video>
+            <div id="reel-placeholder" class="tour-reel-placeholder hidden">
+              <p class="tour-reel-msg text-sullivan-ink font-medium">Reel encoding in progress</p>
+              <p class="text-muted text-sm mt-1">Showing still frames from Post 3</p>
+              <div id="reel-stills" class="tour-reel-stills"></div>
+            </div>
+            <div class="tour-reel-controls card-surface shadow-luxe">
+              <button type="button" id="reel-play-btn" class="tour-round-btn tour-play-btn">▶</button>
+              <label class="tour-speed-label flex-1">
+                <span class="text-xs text-muted uppercase tracking-wider">Speed</span>
+                <input type="range" id="reel-speed" min="0.25" max="2" step="0.25" value="1" class="w-full accent-[#2F5233]" />
+                <span id="reel-speed-label" class="text-xs text-sullivan-green">1.0×</span>
+              </label>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="/static/js/tour_mode.js"></script>
+  </body>
+</html>
