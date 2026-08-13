@@ -492,32 +492,8 @@ class AppFlowTests(unittest.TestCase):
         self.assertEqual(package["reel_drive_ids"][0], package["carousel_drive_ids"][-1])
 
 
-class CloudPipelineTests(unittest.TestCase):
-    """Drive backlog worker helpers: package completeness, error patches, Canva send."""
-
-    def test_classify_error_maps_to_patches(self) -> None:
-        from backend.services.canva_service import CanvaNotConfiguredError
-        from backend.services.drive_service import DriveNotConnectedError
-        from backend.workers.cloud_pipeline_worker import classify_error
-
-        self.assertEqual(classify_error(DriveNotConnectedError("nope")), "drive_auth")
-        self.assertEqual(classify_error(CanvaNotConfiguredError("missing")), "canva_config")
-        self.assertEqual(classify_error(RuntimeError("Folder is not ready to stage")), "incomplete_package")
-        self.assertEqual(classify_error(RuntimeError("Canva unauthorized (401)")), "canva_auth")
-        self.assertEqual(classify_error(RuntimeError("timed out waiting")), "backoff")
-        self.assertEqual(classify_error(RuntimeError("unexpected boom")), "retry")
-
-    def test_already_sent_to_canva(self) -> None:
-        from backend.workers.cloud_pipeline_worker import already_sent_to_canva
-
-        self.assertFalse(already_sent_to_canva({}))
-        self.assertFalse(already_sent_to_canva({"local_paths": {"canva": {"complete": False}}}))
-        self.assertTrue(
-            already_sent_to_canva(
-                {"local_paths": {"canva": {"sent_at": "2026-08-13T00:00:00Z", "complete": True}}}
-            )
-        )
-
+class CanvaServiceTests(unittest.TestCase):
+    """Canva OAuth, package collection, and autofill draft delivery."""
     def test_collect_package_files_and_canva_connect(self) -> None:
         from backend.services.canva_service import CanvaNotConfiguredError, CanvaService, collect_package_files
 
@@ -695,7 +671,7 @@ def main() -> int:
     loader = unittest.defaultTestLoader
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(AppFlowTests))
-    suite.addTests(loader.loadTestsFromTestCase(CloudPipelineTests))
+    suite.addTests(loader.loadTestsFromTestCase(CanvaServiceTests))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

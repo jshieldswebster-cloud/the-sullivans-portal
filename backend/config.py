@@ -261,15 +261,6 @@ DAILY_BACKLOG_ENABLED = os.getenv("DAILY_BACKLOG_ENABLED", "1").lower() in ("1",
 DAILY_BACKLOG_RUN_HOUR_UTC = int(os.getenv("DAILY_BACKLOG_RUN_HOUR_UTC", "14"))  # 6 AM PT ≈ 14 UTC
 DAILY_BACKLOG_SETTINGS_KEY = "daily_backlog_state"
 
-# Render / cloud pipeline worker — Drive backlog → 3-post package → Canva
-CLOUD_WORKER_POLL_SEC = int(os.getenv("CLOUD_WORKER_POLL_SEC", "300"))
-CLOUD_WORKER_MAX_PER_TICK = int(os.getenv("CLOUD_WORKER_MAX_PER_TICK", "5"))
-CLOUD_WORKER_EVENT_RETRY_SEC = float(os.getenv("CLOUD_WORKER_EVENT_RETRY_SEC", "8"))
-CLOUD_WORKER_EVENT_MAX_ATTEMPTS = int(os.getenv("CLOUD_WORKER_EVENT_MAX_ATTEMPTS", "0"))  # 0 = until success
-CLOUD_WORKER_REEL_WAIT_SEC = float(os.getenv("CLOUD_WORKER_REEL_WAIT_SEC", "90"))
-CLOUD_WORKER_SETTINGS_KEY = "cloud_pipeline_worker"
-CLOUD_WORKER_ERROR_LOG_KEY = "cloud_pipeline_errors"
-
 # Canva Connect API — OAuth PKCE + autofill drafts
 # Register this exact redirect URL in the Canva Developer Portal (no trailing slash).
 CANVA_API_BASE = os.getenv("CANVA_API_BASE", "https://api.canva.com/rest/v1").rstrip("/")
