@@ -6,9 +6,11 @@ import io
 import json
 import logging
 import mimetypes
+import re
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from backend.config import (
     DRIVE_POST_2_COUNT,
@@ -24,7 +26,6 @@ from backend.config import (
     GOOGLE_OAUTH_CERTS_URI,
     GOOGLE_OAUTH_SCOPES,
     GOOGLE_OAUTH_TOKEN_URI,
-    GOOGLE_REDIRECT_URI,
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
     GOOGLE_DRIVE_SCOPES,
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON,
@@ -35,6 +36,9 @@ from backend.services.settings_store import read_json, write_json
 from backend.services.upload_service import UploadService
 
 logger = logging.getLogger(__name__)
+
+# Must match Google Cloud Console Authorized redirect URIs exactly (no trailing slash).
+EXACT_GOOGLE_REDIRECT_URI = "https://studio.vvluxe.com/auth/callback"
 
 IMAGE_MIME_PREFIX = "image/"
 VIDEO_MIME_PREFIX = "video/"
@@ -52,6 +56,20 @@ ALLOWED_VIDEO_MIMES = {
     "video/webm",
 }
 FOLDER_MIME = "application/vnd.google-apps.folder"
+
+
+def _exact_oauth_redirect_uri() -> str:
+    """Google Cloud Console Authorized redirect URI, with no trailing slash."""
+    return EXACT_GOOGLE_REDIRECT_URI.strip().rstrip("/")
+
+
+def _authorization_url_with_exact_redirect(auth_url: str, redirect_uri: str) -> str:
+    """Replace whatever redirect_uri the OAuth library emitted with the exact URI."""
+    encoded = quote(redirect_uri, safe="")
+    if "redirect_uri=" in auth_url:
+        return re.sub(r"redirect_uri=[^&]*", f"redirect_uri={encoded}", auth_url, count=1)
+    joiner = "&" if "?" in auth_url else "?"
+    return f"{auth_url}{joiner}redirect_uri={encoded}"
 
 
 class DriveNotConfiguredError(RuntimeError):
@@ -331,7 +349,8 @@ class DriveService:
             )
         from google_auth_oauthlib.flow import Flow
 
-        return Flow.from_client_config(
+        redirect_uri = _exact_oauth_redirect_uri()
+        flow = Flow.from_client_config(
             {
                 "web": {
                     "client_id": GOOGLE_DRIVE_CLIENT_ID,
@@ -339,23 +358,30 @@ class DriveService:
                     "auth_uri": GOOGLE_OAUTH_AUTH_URI,
                     "token_uri": GOOGLE_OAUTH_TOKEN_URI,
                     "auth_provider_x509_cert_url": GOOGLE_OAUTH_CERTS_URI,
-                    "redirect_uris": [GOOGLE_REDIRECT_URI],
+                    "redirect_uris": [redirect_uri],
                 }
             },
             scopes=GOOGLE_OAUTH_SCOPES,
-            redirect_uri=GOOGLE_REDIRECT_URI,
+            redirect_uri=redirect_uri,
             code_verifier=code_verifier,
             autogenerate_code_verifier=autogenerate,
         )
+        flow.redirect_uri = redirect_uri
+        return flow
 
     def oauth_start_url(self, *, state: str) -> tuple[str, str]:
         """Return (authorization_url, pkce_code_verifier) for the web redirect flow."""
+        redirect_uri = _exact_oauth_redirect_uri()
         flow = self._web_oauth_flow(autogenerate=True)
+        flow.redirect_uri = redirect_uri
         url, _ = flow.authorization_url(
             access_type="offline",
             prompt="consent",
             state=state,
+            redirect_uri=redirect_uri,
         )
+        url = _authorization_url_with_exact_redirect(url, redirect_uri)
+        logger.info("Google OAuth redirect_uri=%s", redirect_uri)
         if not flow.code_verifier:
             raise DriveNotConfiguredError("Failed to generate PKCE code_verifier")
         return url, flow.code_verifier
@@ -364,7 +390,9 @@ class DriveService:
         if not GOOGLE_DRIVE_CLIENT_ID or not GOOGLE_DRIVE_CLIENT_SECRET:
             raise DriveNotConfiguredError("Google Drive OAuth is not configured")
         flow = self._web_oauth_flow(code_verifier=code_verifier, autogenerate=False)
-        flow.fetch_token(code=code)
+        redirect_uri = _exact_oauth_redirect_uri()
+        flow.redirect_uri = redirect_uri
+        flow.fetch_token(code=code, redirect_uri=redirect_uri)
         creds = flow.credentials
         _save_oauth_token(
             {
