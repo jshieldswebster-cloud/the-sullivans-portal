@@ -120,13 +120,13 @@ class DriveSyncService:
         preview_ids = []
         if row.get("cover_drive_id"):
             preview_ids.append(row["cover_drive_id"])
-        preview_ids.extend((row.get("carousel_drive_ids") or [])[:4])
+        preview_ids.extend(row.get("carousel_drive_ids") or [])
         reel_ids = row.get("reel_drive_ids") or []
-        if reel_ids:
-            preview_ids.append(reel_ids[0])
+        preview_ids.extend(reel_ids)
         enriched["previews"] = {
             "cover": None,
             "carousel": [],
+            "reel": [],
             "reel_sample": None,
         }
         previews = self.drive.get_file_previews(preview_ids)
@@ -134,8 +134,9 @@ class DriveSyncService:
         if row.get("cover_drive_id"):
             enriched["previews"]["cover"] = by_id.get(row["cover_drive_id"])
         enriched["previews"]["carousel"] = [
-            by_id[fid] for fid in (row.get("carousel_drive_ids") or [])[:8] if fid in by_id
+            by_id[fid] for fid in (row.get("carousel_drive_ids") or []) if fid in by_id
         ]
+        enriched["previews"]["reel"] = [by_id[fid] for fid in reel_ids if fid in by_id]
         if reel_ids:
             enriched["previews"]["reel_sample"] = by_id.get(reel_ids[0])
         if row.get("status") == "review_for_posting":

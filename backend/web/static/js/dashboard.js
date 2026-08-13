@@ -140,11 +140,149 @@ window.onDriveImportPost2 = async (files) => {
 
 window.onDriveImportPost3 = async (files) => {
   if (!files.length) return;
-  state.post3Urls.forEach((u) => URL.revokeObjectURL(u));
+  state.post3Urls.forEach((u) => {
+    if (u && String(u).startsWith("blob:")) URL.revokeObjectURL(u);
+  });
   state.post3 = files;
   state.post3Urls = files.map((f) => URL.createObjectURL(f));
   document.getElementById("post-3-count").textContent = String(files.length);
+  const grid = document.getElementById("post-3-grid");
+  if (grid) {
+    grid.classList.remove("hidden");
+    grid.innerHTML = state.post3Urls
+      .map((url) => `<img src="${url}" alt="" class="rounded-lg aspect-[4/5] object-cover" />`)
+      .join("");
+  }
   validate();
+};
+
+function paintWizardMedia(coverUrl, carouselUrls, reelUrls) {
+  if (coverUrl) {
+    document.getElementById("post-1-preview")?.classList.remove("hidden");
+    const img = document.getElementById("post-1-img");
+    if (img) {
+      img.referrerPolicy = "no-referrer";
+      img.src = coverUrl;
+    }
+    const status = document.getElementById("post-1-status");
+    if (status) status.textContent = "Loaded from Drive project";
+  }
+  const p2grid = document.getElementById("post-2-grid");
+  if (p2grid && carouselUrls.length) {
+    p2grid.classList.remove("hidden");
+    p2grid.innerHTML = carouselUrls
+      .map(
+        (url, i) =>
+          `<img src="${url}" alt="${i + 1}" referrerpolicy="no-referrer" class="rounded-lg aspect-square object-cover" />`
+      )
+      .join("");
+    const count = document.getElementById("post-2-count");
+    if (count) count.textContent = String(carouselUrls.length);
+  }
+  const p3grid = document.getElementById("post-3-grid");
+  if (p3grid && reelUrls.length) {
+    p3grid.classList.remove("hidden");
+    p3grid.innerHTML = reelUrls
+      .map(
+        (url) =>
+          `<img src="${url}" alt="" referrerpolicy="no-referrer" class="rounded-lg aspect-[4/5] object-cover" />`
+      )
+      .join("");
+    const count = document.getElementById("post-3-count");
+    if (count) count.textContent = String(reelUrls.length);
+  }
+}
+
+function previewUrlsFromProject(project) {
+  const cover =
+    project.local_previews?.cover_url ||
+    project.previews?.cover?.thumbnail_link ||
+    "";
+  const carousel = (
+    project.local_previews?.carousel?.length
+      ? project.local_previews.carousel
+      : (project.previews?.carousel || []).map((p) => p.thumbnail_link).filter(Boolean)
+  );
+  const reel = (project.previews?.reel || [])
+    .map((p) => p.thumbnail_link)
+    .filter(Boolean);
+  if (!reel.length && project.previews?.reel_sample?.thumbnail_link) {
+    reel.push(project.previews.reel_sample.thumbnail_link);
+  }
+  return { cover, carousel, reel };
+}
+
+let editorBindSeq = 0;
+
+window.applyDriveProjectToEditor = async function applyDriveProjectToEditor(project) {
+  if (!project) return;
+  const seq = ++editorBindSeq;
+
+  if (project.category) setActiveCategory(project.category);
+  if (project.event_name) eventName.value = project.event_name;
+
+  const urls = previewUrlsFromProject(project);
+  paintWizardMedia(urls.cover, urls.carousel, urls.reel);
+  validate();
+
+  const coverId = project.cover_drive_id;
+  const carouselIds = project.carousel_drive_ids || [];
+  const reelIds = project.reel_drive_ids || [];
+  const fileIds = [coverId, ...carouselIds, ...reelIds].filter(Boolean);
+  if (!fileIds.length || !project.category || !project.event_name) return;
+
+  try {
+    const res = await fetch("/api/studio/drive/import", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category: project.category,
+        event_name: project.event_name,
+        file_ids: fileIds,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    if (seq !== editorBindSeq) return;
+
+    const byId = {};
+    await Promise.all(
+      (data.files || []).map(async (f) => {
+        const fileRes = await fetch(f.url);
+        const blob = await fileRes.blob();
+        const type = blob.type || f.mime_type || "image/jpeg";
+        byId[f.drive_id] = new File([blob], f.filename || "photo.jpg", { type });
+      })
+    );
+    if (seq !== editorBindSeq) return;
+
+    if (coverId && byId[coverId]) {
+      await window.onDriveImportPost1([byId[coverId]]);
+    }
+    const post2 = carouselIds.map((id) => byId[id]).filter(Boolean);
+    if (post2.length) {
+      state.post2Urls.forEach((u) => {
+        if (u && String(u).startsWith("blob:")) URL.revokeObjectURL(u);
+      });
+      state.post2 = post2;
+      state.post2Urls = post2.map((f) => URL.createObjectURL(f));
+      state.post2PreviewIdx = 0;
+      document.getElementById("post-2-count").textContent = String(post2.length);
+      const grid = document.getElementById("post-2-grid");
+      grid.classList.remove("hidden");
+      grid.innerHTML = state.post2Urls
+        .map((url, i) => `<img src="${url}" alt="${i + 1}" class="rounded-lg aspect-square object-cover" />`)
+        .join("");
+    }
+    const post3 = reelIds.map((id) => byId[id]).filter(Boolean);
+    if (post3.length) {
+      await window.onDriveImportPost3(post3);
+    }
+  } catch (err) {
+    console.warn("Drive project media bind failed", err);
+  }
+  if (seq === editorBindSeq) validate();
 };
 
 document.getElementById("step-1-next").addEventListener("click", () => goToStep(2));

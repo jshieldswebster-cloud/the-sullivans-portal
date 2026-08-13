@@ -226,13 +226,17 @@ async function driveReviewSelect(projectId, queue, silent = false) {
     } else {
       driveReviewShowBacklogDetail(project);
     }
-    if (!silent && typeof setActiveCategory === "function") {
-      setActiveCategory(project.category);
-    }
-    const eventInput = driveReviewEl("event-name");
-    if (!silent && eventInput) {
-      eventInput.value = project.event_name;
-      if (typeof validate === "function") validate();
+    if (typeof applyDriveProjectToEditor === "function") {
+      await applyDriveProjectToEditor(project);
+    } else {
+      if (typeof setActiveCategory === "function" && project.category) {
+        setActiveCategory(project.category);
+      }
+      const eventInput = driveReviewEl("event-name");
+      if (eventInput && project.event_name) {
+        eventInput.value = project.event_name;
+        if (typeof validate === "function") validate();
+      }
     }
   } catch (err) {
     const missing = /not found/i.test(err.message || "");
