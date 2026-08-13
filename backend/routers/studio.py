@@ -479,7 +479,8 @@ async def drive_oauth_start(request: Request, return_to: Optional[str] = None):
     state = secrets.token_urlsafe(32)
     request.session["drive_oauth_state"] = state
     request.session["drive_oauth_return"] = return_to or "/dashboard"
-    url = svc.oauth_start_url(state=state)
+    url, code_verifier = svc.oauth_start_url(state=state)
+    request.session["drive_oauth_code_verifier"] = code_verifier
     return RedirectResponse(url, status_code=302)
 
 
@@ -492,8 +493,9 @@ async def drive_oauth_callback(request: Request, code: str = "", state: str = ""
         return RedirectResponse("/dashboard?drive_error=invalid_state", status_code=302)
     if not code:
         return RedirectResponse("/dashboard?drive_error=no_code", status_code=302)
+    code_verifier = request.session.pop("drive_oauth_code_verifier", None)
     try:
-        DriveService().oauth_exchange(code)
+        DriveService().oauth_exchange(code, code_verifier=code_verifier)
     except Exception as exc:
         logger.exception("Drive OAuth callback failed")
         return RedirectResponse("/dashboard?drive_error=exchange_failed", status_code=302)

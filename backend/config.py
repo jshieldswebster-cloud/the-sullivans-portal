@@ -229,7 +229,18 @@ GOOGLE_DRIVE_ROOT_FOLDER_ID = os.getenv(
 GOOGLE_DRIVE_INDEX_PATH = DATA_DIR / "drive_index.json"
 GOOGLE_DRIVE_OAUTH_TOKEN_PATH = DATA_DIR / "drive_oauth_token.json"
 GOOGLE_DRIVE_REFRESH_TOKEN = os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN", "")
+# Web-app OAuth: OpenID identity scopes plus Drive read. Google may add openid
+# on the token response even when not requested — relax strict scope matching.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 GOOGLE_DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+GOOGLE_OAUTH_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    *GOOGLE_DRIVE_SCOPES,
+]
+GOOGLE_OAUTH_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_OAUTH_TOKEN_URI = "https://oauth2.googleapis.com/token"
+GOOGLE_OAUTH_CERTS_URI = "https://www.googleapis.com/oauth2/v1/certs"
 DRIVE_POST_2_COUNT = 8
 
 # Daily backlog batch processor — 3 posts/day from VV LUXE STUDIO Drive

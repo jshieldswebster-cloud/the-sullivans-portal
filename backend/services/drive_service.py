@@ -20,6 +20,10 @@ from backend.config import (
     GOOGLE_DRIVE_MASTER_FOLDER_NAME,
     GOOGLE_DRIVE_OAUTH_TOKEN_PATH,
     GOOGLE_DRIVE_REFRESH_TOKEN,
+    GOOGLE_OAUTH_AUTH_URI,
+    GOOGLE_OAUTH_CERTS_URI,
+    GOOGLE_OAUTH_SCOPES,
+    GOOGLE_OAUTH_TOKEN_URI,
     GOOGLE_REDIRECT_URI,
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
     GOOGLE_DRIVE_SCOPES,
@@ -319,52 +323,47 @@ class DriveService:
             "warnings": warnings,
         }
 
-    def oauth_start_url(self, *, state: str) -> str:
+    def _web_oauth_flow(self, *, code_verifier: str | None = None, autogenerate: bool = False):
+        """Authorization-code Flow for a Web application client (HTTPS + PKCE)."""
         if not GOOGLE_DRIVE_CLIENT_ID or not GOOGLE_DRIVE_CLIENT_SECRET:
             raise DriveNotConfiguredError(
                 "Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET"
             )
         from google_auth_oauthlib.flow import Flow
 
-        flow = Flow.from_client_config(
+        return Flow.from_client_config(
             {
                 "web": {
                     "client_id": GOOGLE_DRIVE_CLIENT_ID,
                     "client_secret": GOOGLE_DRIVE_CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_uri": GOOGLE_OAUTH_AUTH_URI,
+                    "token_uri": GOOGLE_OAUTH_TOKEN_URI,
+                    "auth_provider_x509_cert_url": GOOGLE_OAUTH_CERTS_URI,
                     "redirect_uris": [GOOGLE_REDIRECT_URI],
                 }
             },
-            scopes=GOOGLE_DRIVE_SCOPES,
+            scopes=GOOGLE_OAUTH_SCOPES,
             redirect_uri=GOOGLE_REDIRECT_URI,
+            code_verifier=code_verifier,
+            autogenerate_code_verifier=autogenerate,
         )
+
+    def oauth_start_url(self, *, state: str) -> tuple[str, str]:
+        """Return (authorization_url, pkce_code_verifier) for the web redirect flow."""
+        flow = self._web_oauth_flow(autogenerate=True)
         url, _ = flow.authorization_url(
             access_type="offline",
-            include_granted_scopes="true",
             prompt="consent",
             state=state,
         )
-        return url
+        if not flow.code_verifier:
+            raise DriveNotConfiguredError("Failed to generate PKCE code_verifier")
+        return url, flow.code_verifier
 
-    def oauth_exchange(self, code: str) -> None:
+    def oauth_exchange(self, code: str, *, code_verifier: str | None = None) -> None:
         if not GOOGLE_DRIVE_CLIENT_ID or not GOOGLE_DRIVE_CLIENT_SECRET:
             raise DriveNotConfiguredError("Google Drive OAuth is not configured")
-        from google_auth_oauthlib.flow import Flow
-
-        flow = Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": GOOGLE_DRIVE_CLIENT_ID,
-                    "client_secret": GOOGLE_DRIVE_CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [GOOGLE_REDIRECT_URI],
-                }
-            },
-            scopes=GOOGLE_DRIVE_SCOPES,
-            redirect_uri=GOOGLE_REDIRECT_URI,
-        )
+        flow = self._web_oauth_flow(code_verifier=code_verifier, autogenerate=False)
         flow.fetch_token(code=code)
         creds = flow.credentials
         _save_oauth_token(
