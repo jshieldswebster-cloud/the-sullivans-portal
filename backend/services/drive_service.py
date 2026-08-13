@@ -19,8 +19,8 @@ from backend.config import (
     GOOGLE_DRIVE_MASTER_FOLDER_ID,
     GOOGLE_DRIVE_MASTER_FOLDER_NAME,
     GOOGLE_DRIVE_OAUTH_TOKEN_PATH,
-    GOOGLE_DRIVE_REDIRECT_URI,
     GOOGLE_DRIVE_REFRESH_TOKEN,
+    GOOGLE_REDIRECT_URI,
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
     GOOGLE_DRIVE_SCOPES,
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON,
@@ -333,11 +333,11 @@ class DriveService:
                     "client_secret": GOOGLE_DRIVE_CLIENT_SECRET,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [GOOGLE_DRIVE_REDIRECT_URI],
+                    "redirect_uris": [GOOGLE_REDIRECT_URI],
                 }
             },
             scopes=GOOGLE_DRIVE_SCOPES,
-            redirect_uri=GOOGLE_DRIVE_REDIRECT_URI,
+            redirect_uri=GOOGLE_REDIRECT_URI,
         )
         url, _ = flow.authorization_url(
             access_type="offline",
@@ -359,11 +359,11 @@ class DriveService:
                     "client_secret": GOOGLE_DRIVE_CLIENT_SECRET,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [GOOGLE_DRIVE_REDIRECT_URI],
+                    "redirect_uris": [GOOGLE_REDIRECT_URI],
                 }
             },
             scopes=GOOGLE_DRIVE_SCOPES,
-            redirect_uri=GOOGLE_DRIVE_REDIRECT_URI,
+            redirect_uri=GOOGLE_REDIRECT_URI,
         )
         flow.fetch_token(code=code)
         creds = flow.credentials

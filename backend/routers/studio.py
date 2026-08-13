@@ -504,7 +504,7 @@ async def drive_oauth_callback(request: Request, code: str = "", state: str = ""
 
 @router.get("/auth/callback")
 async def google_auth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    """Production Google OAuth redirect target (GOOGLE_REDIRECT_URI)."""
+    """Forced Google OAuth redirect target: https://studio.vvluxe.com/auth/callback."""
     return await drive_oauth_callback(request, code=code, state=state, error=error)
 
 

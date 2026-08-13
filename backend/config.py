@@ -212,13 +212,9 @@ VINCENT_CHECKLISTS_DIR = DATA_DIR / "vincent_checklists"
 # Google Drive integration
 GOOGLE_DRIVE_CLIENT_ID = os.getenv("GOOGLE_DRIVE_CLIENT_ID", "")
 GOOGLE_DRIVE_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET", "")
-GOOGLE_DRIVE_REDIRECT_URI = os.getenv(
-    "GOOGLE_REDIRECT_URI",
-    os.getenv(
-        "GOOGLE_DRIVE_REDIRECT_URI",
-        "https://studio.vvluxe.com/auth/callback",
-    ),
-)
+# Forced production callback — never derived from request Host headers or localhost.
+GOOGLE_REDIRECT_URI = "https://studio.vvluxe.com/auth/callback"
+GOOGLE_DRIVE_REDIRECT_URI = GOOGLE_REDIRECT_URI
 GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", "")
 GOOGLE_DRIVE_MASTER_FOLDER_NAME = os.getenv("GOOGLE_DRIVE_MASTER_FOLDER_NAME", "VV LUXE STUDIO")
 GOOGLE_DRIVE_MASTER_FOLDER_ID = os.getenv(
