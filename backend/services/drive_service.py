@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import io
 import json
 import logging
 import mimetypes
+import os
 import re
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -20,8 +24,10 @@ from backend.config import (
     GOOGLE_DRIVE_INDEX_PATH,
     GOOGLE_DRIVE_MASTER_FOLDER_ID,
     GOOGLE_DRIVE_MASTER_FOLDER_NAME,
+    GOOGLE_DRIVE_OAUTH_SETTINGS_KEY,
     GOOGLE_DRIVE_OAUTH_TOKEN_PATH,
     GOOGLE_DRIVE_REFRESH_TOKEN,
+    GOOGLE_DRIVE_TOKEN_REFRESH_INTERVAL_SEC,
     GOOGLE_OAUTH_AUTH_URI,
     GOOGLE_OAUTH_CERTS_URI,
     GOOGLE_OAUTH_SCOPES,
@@ -29,6 +35,7 @@ from backend.config import (
     GOOGLE_DRIVE_ROOT_FOLDER_ID,
     GOOGLE_DRIVE_SCOPES,
     GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON,
+    STUDIO_SECRET_KEY,
     UPLOADS_DIR,
     category_slug,
 )
@@ -39,6 +46,10 @@ logger = logging.getLogger(__name__)
 
 # Must match Google Cloud Console Authorized redirect URIs exactly (no trailing slash).
 EXACT_GOOGLE_REDIRECT_URI = "https://studio.vvluxe.com/auth/callback"
+OAUTH_ACCESS_TYPE = "offline"
+OAUTH_PROMPT = "consent"
+_TOKEN_FERNET_SALT = b"vv-luxe-drive-oauth-v1"
+_token_lock = threading.Lock()
 
 IMAGE_MIME_PREFIX = "image/"
 VIDEO_MIME_PREFIX = "video/"
@@ -63,13 +74,21 @@ def _exact_oauth_redirect_uri() -> str:
     return EXACT_GOOGLE_REDIRECT_URI.strip().rstrip("/")
 
 
+def _upsert_query_param(url: str, key: str, value: str) -> str:
+    encoded = quote(value, safe="")
+    pattern = rf"{re.escape(key)}=[^&]*"
+    if re.search(pattern, url):
+        return re.sub(pattern, f"{key}={encoded}", url, count=1)
+    joiner = "&" if "?" in url else "?"
+    return f"{url}{joiner}{key}={encoded}"
+
+
 def _authorization_url_with_exact_redirect(auth_url: str, redirect_uri: str) -> str:
-    """Replace whatever redirect_uri the OAuth library emitted with the exact URI."""
-    encoded = quote(redirect_uri, safe="")
-    if "redirect_uri=" in auth_url:
-        return re.sub(r"redirect_uri=[^&]*", f"redirect_uri={encoded}", auth_url, count=1)
-    joiner = "&" if "?" in auth_url else "?"
-    return f"{auth_url}{joiner}redirect_uri={encoded}"
+    """Pin redirect_uri and force a refresh-token grant (offline + consent)."""
+    url = _upsert_query_param(auth_url, "redirect_uri", redirect_uri)
+    url = _upsert_query_param(url, "access_type", OAUTH_ACCESS_TYPE)
+    url = _upsert_query_param(url, "prompt", OAUTH_PROMPT)
+    return url
 
 
 class DriveNotConfiguredError(RuntimeError):
@@ -88,21 +107,198 @@ def _credentials_configured() -> bool:
     return bool(GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET)
 
 
-def _load_oauth_token() -> dict[str, Any] | None:
-    if GOOGLE_DRIVE_REFRESH_TOKEN:
-        return {
-            "refresh_token": GOOGLE_DRIVE_REFRESH_TOKEN,
-            "client_id": GOOGLE_DRIVE_CLIENT_ID,
-            "client_secret": GOOGLE_DRIVE_CLIENT_SECRET,
-            "token_uri": "https://oauth2.googleapis.com/token",
-        }
-    if GOOGLE_DRIVE_OAUTH_TOKEN_PATH.is_file():
-        return read_json(GOOGLE_DRIVE_OAUTH_TOKEN_PATH, default=None)
+def _token_fernet():
+    from cryptography.fernet import Fernet
+
+    digest = hashlib.sha256(STUDIO_SECRET_KEY.encode("utf-8") + _TOKEN_FERNET_SALT).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _encrypt_token_payload(token_data: dict[str, Any]) -> dict[str, str]:
+    blob = json.dumps(token_data, separators=(",", ":")).encode("utf-8")
+    return {
+        "encoding": "fernet-v1",
+        "payload": _token_fernet().encrypt(blob).decode("ascii"),
+    }
+
+
+def _decrypt_token_payload(envelope: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(envelope, dict) or envelope.get("encoding") != "fernet-v1":
+        return None
+    ciphertext = envelope.get("payload")
+    if not ciphertext:
+        return None
+    try:
+        raw = _token_fernet().decrypt(ciphertext.encode("ascii"))
+        data = json.loads(raw.decode("utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception as exc:
+        logger.warning("Failed to decrypt stored Google Drive OAuth token: %s", exc)
+        return None
+
+
+def _looks_like_token_dict(data: Any) -> bool:
+    return isinstance(data, dict) and bool(data.get("refresh_token") or data.get("token"))
+
+
+def _normalize_expiry(value: Any) -> str | None:
+    """Format expiry the way google.oauth2.credentials.Credentials expects."""
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        dt = value
+        tzinfo = getattr(dt, "tzinfo", None)
+        if tzinfo is not None:
+            from datetime import timezone
+
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    text = str(value).strip()
+    if not text:
+        return None
+    text = text.replace("+00:00", "Z")
+    core = text.rstrip("Z").split(".")[0]
+    if "+" in core:
+        core = core.split("+", 1)[0]
+    return f"{core}Z"
+
+
+def _merge_oauth_tokens(existing: dict[str, Any] | None, incoming: dict[str, Any]) -> dict[str, Any]:
+    """Keep a durable refresh token even when Google omits it on later responses."""
+    merged = dict(existing or {})
+    for key, value in incoming.items():
+        if value is not None:
+            merged[key] = value
+    if not merged.get("refresh_token") and (existing or {}).get("refresh_token"):
+        merged["refresh_token"] = existing["refresh_token"]
+    merged.setdefault("token_uri", GOOGLE_OAUTH_TOKEN_URI)
+    merged.setdefault("client_id", GOOGLE_DRIVE_CLIENT_ID)
+    merged.setdefault("client_secret", GOOGLE_DRIVE_CLIENT_SECRET)
+    merged.setdefault("scopes", list(GOOGLE_DRIVE_SCOPES))
+    if merged.get("expiry"):
+        merged["expiry"] = _normalize_expiry(merged["expiry"])
+    return merged
+
+
+def _env_refresh_bootstrap() -> dict[str, Any] | None:
+    if not GOOGLE_DRIVE_REFRESH_TOKEN:
+        return None
+    return {
+        "refresh_token": GOOGLE_DRIVE_REFRESH_TOKEN,
+        "client_id": GOOGLE_DRIVE_CLIENT_ID,
+        "client_secret": GOOGLE_DRIVE_CLIENT_SECRET,
+        "token_uri": GOOGLE_OAUTH_TOKEN_URI,
+        "scopes": list(GOOGLE_DRIVE_SCOPES),
+    }
+
+
+def _read_db_token() -> dict[str, Any] | None:
+    from backend.database import get_studio_setting
+
+    stored = get_studio_setting(GOOGLE_DRIVE_OAUTH_SETTINGS_KEY, default={})
+    if not stored:
+        return None
+    decrypted = _decrypt_token_payload(stored)
+    if decrypted:
+        return decrypted
+    if _looks_like_token_dict(stored):
+        return stored
     return None
 
 
+def _read_file_token() -> dict[str, Any] | None:
+    if not GOOGLE_DRIVE_OAUTH_TOKEN_PATH.is_file():
+        return None
+    data = read_json(GOOGLE_DRIVE_OAUTH_TOKEN_PATH, default=None)
+    if not isinstance(data, dict):
+        return None
+    decrypted = _decrypt_token_payload(data)
+    if decrypted:
+        return decrypted
+    if _looks_like_token_dict(data):
+        return data
+    return None
+
+
+def _write_db_token(token_data: dict[str, Any]) -> None:
+    from backend.database import set_studio_setting
+
+    set_studio_setting(GOOGLE_DRIVE_OAUTH_SETTINGS_KEY, _encrypt_token_payload(token_data))
+
+
+def _write_file_token(token_data: dict[str, Any]) -> None:
+    write_json(GOOGLE_DRIVE_OAUTH_TOKEN_PATH, _encrypt_token_payload(token_data))
+    try:
+        os.chmod(GOOGLE_DRIVE_OAUTH_TOKEN_PATH, 0o600)
+    except OSError:
+        logger.debug("Could not chmod Drive OAuth token file")
+
+
+def _load_oauth_token() -> dict[str, Any] | None:
+    persist = False
+    with _token_lock:
+        stored = _read_db_token()
+        file_data = _read_file_token()
+        env_data = _env_refresh_bootstrap()
+        merged: dict[str, Any] | None = None
+        if file_data:
+            merged = _merge_oauth_tokens(merged, file_data)
+        if stored:
+            merged = _merge_oauth_tokens(merged, stored)
+        if env_data and not (merged or {}).get("refresh_token"):
+            merged = _merge_oauth_tokens(merged, env_data)
+        persist = bool(merged and merged.get("refresh_token") and not stored)
+    if persist and merged:
+        try:
+            _save_oauth_token(merged)
+        except Exception:
+            logger.debug("Could not persist Drive OAuth token to database", exc_info=True)
+    return merged
+
+
 def _save_oauth_token(token_data: dict[str, Any]) -> None:
-    write_json(GOOGLE_DRIVE_OAUTH_TOKEN_PATH, token_data)
+    with _token_lock:
+        existing = _read_db_token() or _read_file_token() or {}
+        merged = _merge_oauth_tokens(existing, token_data)
+        refresh = merged.get("refresh_token")
+        if not refresh:
+            raise DriveNotConfiguredError(
+                "Google did not issue a refresh token. Reconnect Google Drive so the "
+                "consent screen can grant offline access."
+            )
+        _write_db_token(merged)
+        _write_file_token(merged)
+
+
+def _clear_oauth_token() -> None:
+    from backend.database import delete_studio_setting
+
+    with _token_lock:
+        try:
+            delete_studio_setting(GOOGLE_DRIVE_OAUTH_SETTINGS_KEY)
+        except Exception:
+            logger.warning("Could not clear Drive OAuth token from database")
+        if GOOGLE_DRIVE_OAUTH_TOKEN_PATH.is_file():
+            GOOGLE_DRIVE_OAUTH_TOKEN_PATH.unlink(missing_ok=True)
+
+
+def _credentials_to_token_dict(creds: Any, existing: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    try:
+        payload = json.loads(creds.to_json())
+    except Exception:
+        payload = {
+            "token": getattr(creds, "token", None),
+            "refresh_token": getattr(creds, "refresh_token", None),
+            "token_uri": getattr(creds, "token_uri", None),
+            "client_id": getattr(creds, "client_id", None),
+            "client_secret": getattr(creds, "client_secret", None),
+            "scopes": list(getattr(creds, "scopes", None) or []),
+        }
+        expiry = getattr(creds, "expiry", None)
+        if expiry is not None:
+            payload["expiry"] = expiry.isoformat()
+    return _merge_oauth_tokens(existing, payload)
 
 
 class DriveService:
@@ -151,6 +347,7 @@ class DriveService:
             "configured": self.is_configured(),
             "connected": self.is_connected(),
             "auth_mode": self.auth_mode(),
+            "has_refresh_token": bool((_load_oauth_token() or {}).get("refresh_token")),
             "master_folder_name": GOOGLE_DRIVE_MASTER_FOLDER_NAME,
             "master_folder_id": GOOGLE_DRIVE_MASTER_FOLDER_ID,
             "master_folder": master,
@@ -375,8 +572,8 @@ class DriveService:
         flow = self._web_oauth_flow(autogenerate=True)
         flow.redirect_uri = redirect_uri
         url, _ = flow.authorization_url(
-            access_type="offline",
-            prompt="consent",
+            access_type=OAUTH_ACCESS_TYPE,
+            prompt=OAUTH_PROMPT,
             state=state,
         )
         url = _authorization_url_with_exact_redirect(url, redirect_uri)
@@ -393,23 +590,59 @@ class DriveService:
         flow.redirect_uri = redirect_uri
         flow.fetch_token(code=code)
         creds = flow.credentials
-        _save_oauth_token(
-            {
-                "token": creds.token,
-                "refresh_token": creds.refresh_token,
-                "token_uri": creds.token_uri,
-                "client_id": creds.client_id,
-                "client_secret": creds.client_secret,
-                "scopes": list(creds.scopes or GOOGLE_DRIVE_SCOPES),
-            }
-        )
+        existing = _load_oauth_token() or {}
+        payload = _credentials_to_token_dict(creds, existing=existing)
+        if not payload.get("refresh_token"):
+            raise DriveNotConfiguredError(
+                "Google did not issue a refresh token. Reconnect and grant offline access."
+            )
+        _save_oauth_token(payload)
         self._service = None
-        logger.info("Google Drive OAuth connected")
+        logger.info("Google Drive OAuth connected (refresh token stored)")
 
     def disconnect(self) -> None:
-        if GOOGLE_DRIVE_OAUTH_TOKEN_PATH.is_file():
-            GOOGLE_DRIVE_OAUTH_TOKEN_PATH.unlink(missing_ok=True)
+        _clear_oauth_token()
         self._service = None
+
+    def refresh_access_token(self, *, force: bool = False) -> bool:
+        """Use the stored refresh token to mint a new access token without user interaction."""
+        token_data = _load_oauth_token()
+        if not token_data or not token_data.get("refresh_token"):
+            raise DriveNotConnectedError(
+                "Google Drive not connected — complete OAuth or set a service account"
+            )
+        creds = self._credentials_from_token_data(token_data)
+        if not force and creds.valid and creds.expiry is not None:
+            return False
+        from google.auth.transport.requests import Request
+
+        creds.refresh(Request())
+        _save_oauth_token(_credentials_to_token_dict(creds, existing=token_data))
+        self._service = None
+        logger.info("Google Drive access token refreshed")
+        return True
+
+    def _credentials_from_token_data(self, token_data: dict[str, Any]):
+        from google.oauth2.credentials import Credentials
+
+        info = {key: value for key, value in token_data.items() if value is not None}
+        info.setdefault("token_uri", GOOGLE_OAUTH_TOKEN_URI)
+        info.setdefault("client_id", GOOGLE_DRIVE_CLIENT_ID)
+        info.setdefault("client_secret", GOOGLE_DRIVE_CLIENT_SECRET)
+        if info.get("expiry"):
+            info["expiry"] = _normalize_expiry(info["expiry"])
+        scopes = info.get("scopes") or GOOGLE_DRIVE_SCOPES
+        try:
+            return Credentials.from_authorized_user_info(info, scopes=scopes)
+        except Exception:
+            return Credentials(
+                token=info.get("token"),
+                refresh_token=info.get("refresh_token"),
+                token_uri=info.get("token_uri", GOOGLE_OAUTH_TOKEN_URI),
+                client_id=info.get("client_id", GOOGLE_DRIVE_CLIENT_ID),
+                client_secret=info.get("client_secret", GOOGLE_DRIVE_CLIENT_SECRET),
+                scopes=scopes,
+            )
 
     def _build_credentials(self):
         if GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON:
@@ -427,30 +660,18 @@ class DriveService:
             raise DriveNotConnectedError(
                 "Google Drive not connected — complete OAuth or set a service account"
             )
-
-        from google.oauth2.credentials import Credentials
-        from google.auth.transport.requests import Request
-
-        creds = Credentials(
-            token=token_data.get("token"),
-            refresh_token=token_data.get("refresh_token"),
-            token_uri=token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
-            client_id=token_data.get("client_id", GOOGLE_DRIVE_CLIENT_ID),
-            client_secret=token_data.get("client_secret", GOOGLE_DRIVE_CLIENT_SECRET),
-            scopes=token_data.get("scopes", GOOGLE_DRIVE_SCOPES),
-        )
-        if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            _save_oauth_token(
-                {
-                    "token": creds.token,
-                    "refresh_token": creds.refresh_token,
-                    "token_uri": creds.token_uri,
-                    "client_id": creds.client_id,
-                    "client_secret": creds.client_secret,
-                    "scopes": list(creds.scopes or GOOGLE_DRIVE_SCOPES),
-                }
+        if not token_data.get("refresh_token"):
+            raise DriveNotConnectedError(
+                "Google Drive refresh token missing — reconnect Google Drive"
             )
+
+        creds = self._credentials_from_token_data(token_data)
+        needs_refresh = (not creds.valid) or creds.expiry is None
+        if needs_refresh:
+            from google.auth.transport.requests import Request
+
+            creds.refresh(Request())
+            _save_oauth_token(_credentials_to_token_dict(creds, existing=token_data))
         return creds
 
     def _get_service(self):
@@ -704,3 +925,52 @@ class DriveService:
             images = images[:limit]
         ids = [img["id"] for img in images]
         return self.import_files(ids, category=category, event_name=event_name)
+
+
+class DriveTokenRefreshScheduler:
+    """Renew Google Drive access tokens in the background using the stored refresh token."""
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._loop,
+            name="drive-token-refresh",
+            daemon=True,
+        )
+        self._thread.start()
+        logger.info(
+            "Drive token refresh scheduler started (every %ds)",
+            GOOGLE_DRIVE_TOKEN_REFRESH_INTERVAL_SEC,
+        )
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _loop(self) -> None:
+        svc = DriveService()
+        self._refresh_once(svc)
+        interval = max(60, GOOGLE_DRIVE_TOKEN_REFRESH_INTERVAL_SEC)
+        while not self._stop.is_set():
+            if self._stop.wait(timeout=interval):
+                break
+            self._refresh_once(svc)
+
+    @staticmethod
+    def _refresh_once(svc: DriveService) -> None:
+        try:
+            if svc.auth_mode() != "oauth":
+                return
+            svc.refresh_access_token(force=True)
+        except DriveNotConnectedError:
+            logger.debug("Drive OAuth not connected — skip background token refresh")
+        except Exception:
+            logger.exception("Background Google Drive token refresh failed")
+
+
+drive_token_refresh_scheduler = DriveTokenRefreshScheduler()

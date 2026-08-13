@@ -19,7 +19,7 @@ def _utc_now() -> str:
 @contextmanager
 def get_connection() -> Generator[sqlite3.Connection, None, None]:
     ensure_directories()
-    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -545,6 +545,11 @@ def set_studio_setting(key: str, value: dict[str, Any]) -> None:
             """,
             (key, json.dumps(value), now),
         )
+
+
+def delete_studio_setting(key: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM studio_settings WHERE key = ?", (key,))
 
 
 # ── Drive project review queue ──────────────────────────────────────────────

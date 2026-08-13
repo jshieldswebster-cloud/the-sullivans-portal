@@ -229,6 +229,11 @@ GOOGLE_DRIVE_ROOT_FOLDER_ID = os.getenv(
 GOOGLE_DRIVE_INDEX_PATH = DATA_DIR / "drive_index.json"
 GOOGLE_DRIVE_OAUTH_TOKEN_PATH = DATA_DIR / "drive_oauth_token.json"
 GOOGLE_DRIVE_REFRESH_TOKEN = os.getenv("GOOGLE_DRIVE_REFRESH_TOKEN", "")
+GOOGLE_DRIVE_OAUTH_SETTINGS_KEY = "google_drive_oauth"
+# Access tokens last ~60 minutes; refresh in the background before they lapse.
+GOOGLE_DRIVE_TOKEN_REFRESH_INTERVAL_SEC = int(
+    os.getenv("GOOGLE_DRIVE_TOKEN_REFRESH_INTERVAL_SEC", "2700")
+)
 # Web-app OAuth: OpenID identity scopes plus Drive read. Google may add openid
 # on the token response even when not requested — relax strict scope matching.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
