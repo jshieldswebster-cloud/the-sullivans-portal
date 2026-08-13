@@ -649,7 +649,11 @@ async def drive_list_projects(
             status=status or "pending_review",
             category=category,
         )
-    return {"projects": projects, "count": len(projects)}
+    return {
+        "projects": projects,
+        "count": len(projects),
+        "active_project_id": projects[0]["id"] if projects else None,
+    }
 
 
 @api.get("/backlog/status")
@@ -657,10 +661,18 @@ async def backlog_status(request: Request):
     require_user(request)
     worker = DailyBacklogWorker()
     queue = DriveSyncService().list_review_for_posting()
+    pending = DriveSyncService().list_queue(status="pending_review")
+    active = None
+    if queue:
+        active = queue[0].get("id")
+    elif pending:
+        active = pending[0].get("id")
     return {
         **worker.status(),
         "review_queue_count": len(queue),
         "review_queue": queue,
+        "pending_count": len(pending),
+        "active_project_id": active,
     }
 
 
@@ -693,7 +705,7 @@ async def backlog_run_daily(request: Request):
 async def drive_get_project(request: Request, project_id: str):
     require_user(request)
     project = DriveSyncService().get_project(project_id)
-    if not project:
+    if not project_id or project_id in ("undefined", "null") or not project:
         return JSONResponse({"error": "Project not found"}, status_code=404)
     return project
 

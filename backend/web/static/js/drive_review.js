@@ -96,6 +96,52 @@ function renderProjectCards(projects, gridId, emptyId, queue) {
   });
 }
 
+function driveReviewUrlProjectId() {
+  return (new URLSearchParams(window.location.search).get("project") || "").trim();
+}
+
+function driveReviewFindQueued(projectId) {
+  if (!projectId) return null;
+  const posting = driveReview.postingProjects.find((p) => p.id === projectId);
+  if (posting) return { project: posting, queue: "posting" };
+  const backlog = driveReview.backlogProjects.find((p) => p.id === projectId);
+  if (backlog) return { project: backlog, queue: "backlog" };
+  return null;
+}
+
+function driveReviewFirstAvailable() {
+  if (driveReview.postingProjects[0]) {
+    return { project: driveReview.postingProjects[0], queue: "posting" };
+  }
+  if (driveReview.backlogProjects[0]) {
+    return { project: driveReview.backlogProjects[0], queue: "backlog" };
+  }
+  return null;
+}
+
+async function driveReviewEnsureSelection(preferredId = null) {
+  const wanted =
+    preferredId ||
+    driveReview.selectedId ||
+    driveReviewUrlProjectId() ||
+    driveReview.backlogStatus?.active_project_id ||
+    "";
+  const match = driveReviewFindQueued(wanted) || driveReviewFirstAvailable();
+  if (!match) {
+    driveReviewHideDetail();
+    return;
+  }
+  if (driveReview.selectedId === match.project.id && driveReview.selectedQueue === match.queue) {
+    return;
+  }
+  await driveReviewSelect(match.project.id, match.queue, true);
+}
+
+async function driveReviewRefreshQueues() {
+  await Promise.all([driveReviewLoadBacklogStatus(), driveReviewLoadBacklogQueue()]);
+  await driveReviewEnsureSelection();
+}
+
 async function driveReviewLoadBacklogStatus() {
   try {
     const data = await driveReviewFetch("/backlog/status");
@@ -163,6 +209,10 @@ function driveReviewHideDetail() {
 }
 
 async function driveReviewSelect(projectId, queue, silent = false) {
+  if (!projectId || projectId === "undefined" || projectId === "null") {
+    await driveReviewEnsureSelection();
+    return;
+  }
   driveReview.selectedId = projectId;
   driveReview.selectedQueue = queue;
   document.querySelectorAll(".drive-review-card").forEach((c) => {
@@ -185,6 +235,17 @@ async function driveReviewSelect(projectId, queue, silent = false) {
       if (typeof validate === "function") validate();
     }
   } catch (err) {
+    const missing = /not found/i.test(err.message || "");
+    if (missing) {
+      driveReview.selectedId = null;
+      const fallback = driveReviewFirstAvailable();
+      if (fallback && fallback.project.id !== projectId) {
+        await driveReviewSelect(fallback.project.id, fallback.queue, true);
+        return;
+      }
+      driveReviewHideDetail();
+      return;
+    }
     if (!silent) driveReviewSetStatus(err.message, queue === "backlog" ? "backlog" : "posting");
   }
 }
@@ -338,8 +399,7 @@ function driveReviewPollJob(kind) {
         driveReview[pollKey] = null;
         driveReview[jobIdKey] = null;
         driveReviewEl(btnId).disabled = false;
-        await driveReviewLoadBacklogStatus();
-        await driveReviewLoadBacklogQueue();
+        await driveReviewRefreshQueues();
         driveReviewSetStatus(
           kind === "backlog" ? "Daily batch complete" : "Drive sync complete",
           statusTarget
@@ -387,8 +447,7 @@ async function driveReviewApprovePosting(rerender = false) {
 
     driveReviewSetStatus("Approved — cleared from backlog");
     driveReviewHideDetail();
-    await driveReviewLoadBacklogStatus();
-    await driveReviewLoadBacklogQueue();
+    await driveReviewRefreshQueues();
 
     if (typeof goToStep === "function" && result.ideal_row) {
       state.savedData = result.ideal_row;
@@ -430,8 +489,8 @@ async function driveReviewApproveBacklog() {
     });
 
     driveReviewSetStatus("Package approved", "backlog");
-    await driveReviewLoadBacklogQueue();
     driveReviewHideDetail();
+    await driveReviewRefreshQueues();
 
     if (typeof goToStep === "function" && result.ideal_row) {
       state.savedData = result.ideal_row;
@@ -452,20 +511,13 @@ function driveReviewInit() {
   driveReviewEl("posting-rerender-btn")?.addEventListener("click", () => driveReviewApprovePosting(true));
   driveReviewEl("drive-approve-btn")?.addEventListener("click", driveReviewApproveBacklog);
   driveReviewLoadAudio();
-  driveReviewLoadBacklogStatus();
-  driveReviewLoadBacklogQueue();
+  driveReviewRefreshQueues().then(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("drive") === "connected") {
+      driveReviewStartSync();
+      driveReviewStartBacklogBatch();
+    }
+  });
 }
 
 document.addEventListener("DOMContentLoaded", driveReviewInit);
-
-window.addEventListener("load", () => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("drive") === "connected") {
-    driveReviewStartSync();
-    driveReviewStartBacklogBatch();
-  }
-  const projectId = params.get("project");
-  if (projectId) {
-    driveReviewSelect(projectId, "posting");
-  }
-});
