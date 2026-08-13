@@ -502,6 +502,12 @@ async def drive_oauth_callback(request: Request, code: str = "", state: str = ""
     return RedirectResponse(f"{return_to}{sep}drive=connected", status_code=302)
 
 
+@router.get("/auth/callback")
+async def google_auth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Production Google OAuth redirect target (GOOGLE_REDIRECT_URI)."""
+    return await drive_oauth_callback(request, code=code, state=state, error=error)
+
+
 @api.post("/drive/disconnect")
 async def drive_disconnect(request: Request):
     require_user(request)
