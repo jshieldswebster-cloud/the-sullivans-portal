@@ -283,9 +283,21 @@ class DriveSyncService:
         if row["status"] == "review_for_posting":
             if rerender_reel:
                 return self._rerender_staged_reel(row, audio_track_id=audio_track_id)
-            return self._approve_staged_project(
-                row,
-                audio_track_id=audio_track_id,
+            staging_path = row.get("staging_path")
+            src_base = (
+                Path(staging_path)
+                if staging_path
+                else review_for_posting_paths(row["category"], row["event_name"])["base"]
+            )
+            if src_base.is_dir():
+                return self._approve_staged_project(
+                    row,
+                    audio_track_id=audio_track_id,
+                )
+            logger.warning(
+                "Staged package missing for %s (%s) — publishing from Drive instead",
+                row.get("event_name"),
+                src_base,
             )
 
         category = row["category"]

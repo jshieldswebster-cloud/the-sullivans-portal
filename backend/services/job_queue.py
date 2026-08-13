@@ -111,9 +111,25 @@ class BackgroundJobManager:
         self._handlers[job_type] = handler
         logger.info("Registered job handler: %s", job_type)
 
+    def ensure_handlers(self) -> None:
+        """Register built-in workers even if startup did not finish registering them."""
+        needed = ("montage", "zip_export", "drive_sync", "daily_backlog")
+        if all(name in self._handlers for name in needed):
+            return
+        from backend.workers.montage_worker import run_montage_job
+        from backend.workers.zip_worker import run_zip_export_job
+        from backend.workers.drive_sync_worker import run_drive_sync_job
+        from backend.services.daily_backlog_worker import run_daily_backlog_job
+
+        self.register("montage", run_montage_job)
+        self.register("zip_export", run_zip_export_job)
+        self.register("drive_sync", run_drive_sync_job)
+        self.register("daily_backlog", run_daily_backlog_job)
+
     def enqueue(self, job_type: str, meta: dict[str, Any] | None = None) -> str:
         if self._shutdown:
             raise RuntimeError("Job queue is shutting down")
+        self.ensure_handlers()
         if job_type not in self._handlers:
             raise ValueError(f"No handler registered for job type: {job_type}")
 

@@ -1,13 +1,14 @@
 /** Mobile Event Portal — backlog status, daily batch, drive sync */
 
 async function portalFetch(path, options = {}) {
+  const { headers: extraHeaders, ...rest } = options;
   const res = await fetch(`/api/studio${path}`, {
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
+    ...rest,
+    headers: { "Content-Type": "application/json", ...(extraHeaders || {}) },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) throw new Error(data.error || res.statusText || `Request failed (${res.status})`);
   return data;
 }
 
@@ -114,7 +115,11 @@ async function runDailyBatch() {
   if (btn) btn.disabled = true;
   setPortalStatus("Starting daily batch…");
   try {
-    const data = await portalFetch("/backlog/run-daily", { method: "POST", body: "{}" });
+    const data = await portalFetch("/backlog/run-daily", {
+      method: "POST",
+      body: JSON.stringify({ force: true }),
+    });
+    if (!data.job_id) throw new Error(data.error || "Daily batch did not start");
     pollJob(data.job_id, "Daily batch");
   } catch (err) {
     setPortalStatus(err.message);
@@ -135,8 +140,14 @@ async function syncFromDrive() {
   }
 }
 
-document.getElementById("btn-daily-batch")?.addEventListener("click", runDailyBatch);
-document.getElementById("btn-drive-sync")?.addEventListener("click", syncFromDrive);
+document.getElementById("btn-daily-batch")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  runDailyBatch();
+});
+document.getElementById("btn-drive-sync")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  syncFromDrive();
+});
 
 function toggleMenu() {
   const menu = document.getElementById("dropdownMenu");

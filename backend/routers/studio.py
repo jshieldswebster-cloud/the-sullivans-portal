@@ -677,7 +677,9 @@ async def backlog_status(request: Request):
 
 
 @api.post("/backlog/run-daily")
+@api.post("/daily-batch")
 async def backlog_run_daily(request: Request):
+    """Manually run the daily Drive → Review for Posting batch (always forced)."""
     require_user(request)
     body = {}
     if request.headers.get("content-type", "").startswith("application/json"):
@@ -685,17 +687,18 @@ async def backlog_run_daily(request: Request):
             body = await request.json()
         except Exception:
             body = {}
+    if not isinstance(body, dict):
+        body = {}
     try:
-        if not DriveService().is_connected():
-            return JSONResponse({"error": "Connect Google Drive first"}, status_code=401)
         job = montage_jobs.create_typed(
             "daily_backlog",
             meta={
                 "requested_by": get_current_user(request),
-                "force": bool(body.get("force")),
+                # Button clicks must run even if the startup scheduler already used today's quota.
+                "force": True if body.get("force") is None else bool(body.get("force")),
             },
         )
-        return {"job_id": job.id, "status": job.status}
+        return {"job_id": job.id, "status": job.status, "queued": True}
     except Exception as exc:
         logger.exception("Daily backlog enqueue failed")
         return JSONResponse({"error": str(exc)}, status_code=502)
@@ -739,6 +742,8 @@ async def drive_approve_project(request: Request, project_id: str):
         )
         return result
     except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     except DriveNotConnectedError as exc:
         return JSONResponse({"error": str(exc)}, status_code=401)

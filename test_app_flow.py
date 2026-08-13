@@ -7,6 +7,7 @@ Run:
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -236,6 +237,99 @@ class AppFlowTests(unittest.TestCase):
         self.assertNotIn("exchange_failed", loc)
         self.assertIn("drive=connected", loc)
 
+        from backend.config import GOOGLE_DRIVE_OAUTH_SETTINGS_KEY
+        from backend.database import get_studio_setting
+        from backend.services.drive_service import _load_oauth_token
+
+        stored = get_studio_setting(GOOGLE_DRIVE_OAUTH_SETTINGS_KEY, default={})
+        self.assertEqual(stored.get("encoding"), "fernet-v1")
+        self.assertTrue(stored.get("payload"))
+        self.assertNotIn(FakeOAuthCredentials.refresh_token, json.dumps(stored))
+
+        loaded = _load_oauth_token()
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["refresh_token"], FakeOAuthCredentials.refresh_token)
+        self.assertEqual(loaded["token"], FakeOAuthCredentials.token)
+
+    def test_refresh_token_survives_google_omitting_it_on_renewal(self) -> None:
+        from backend.services.drive_service import _load_oauth_token, _save_oauth_token
+
+        _save_oauth_token(
+            {
+                "token": "ya29.old-access",
+                "refresh_token": "1//keep-me-forever",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "client_id": FakeOAuthCredentials.client_id,
+                "client_secret": FakeOAuthCredentials.client_secret,
+                "scopes": FakeOAuthCredentials.scopes,
+            }
+        )
+        _save_oauth_token(
+            {
+                "token": "ya29.new-access",
+                "refresh_token": None,
+            }
+        )
+        loaded = _load_oauth_token()
+        self.assertEqual(loaded["refresh_token"], "1//keep-me-forever")
+        self.assertEqual(loaded["token"], "ya29.new-access")
+
+    def test_refresh_access_token_uses_stored_refresh_token(self) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from backend.services.drive_service import DriveService, _save_oauth_token
+
+        _save_oauth_token(
+            {
+                "token": "ya29.expired",
+                "refresh_token": "1//keep-me-forever",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "client_id": FakeOAuthCredentials.client_id,
+                "client_secret": FakeOAuthCredentials.client_secret,
+                "scopes": FakeOAuthCredentials.scopes,
+                "expiry": "2020-01-01T00:00:00Z",
+            }
+        )
+
+        class _RefreshedCreds:
+            token = "ya29.renewed"
+            refresh_token = None
+            token_uri = "https://oauth2.googleapis.com/token"
+            client_id = FakeOAuthCredentials.client_id
+            client_secret = FakeOAuthCredentials.client_secret
+            scopes = FakeOAuthCredentials.scopes
+            expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+            valid = False
+
+            def refresh(self, _request):
+                self.token = "ya29.renewed"
+                self.valid = True
+
+            def to_json(self):
+                import json as _json
+
+                return _json.dumps(
+                    {
+                        "token": self.token,
+                        "refresh_token": self.refresh_token,
+                        "token_uri": self.token_uri,
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "scopes": self.scopes,
+                        "expiry": self.expiry.replace(tzinfo=None).isoformat() + "Z",
+                    }
+                )
+
+        svc = DriveService()
+        with patch.object(svc, "_credentials_from_token_data", return_value=_RefreshedCreds()):
+            self.assertTrue(svc.refresh_access_token(force=True))
+
+        from backend.services.drive_service import _load_oauth_token
+
+        loaded = _load_oauth_token()
+        self.assertEqual(loaded["token"], "ya29.renewed")
+        self.assertEqual(loaded["refresh_token"], "1//keep-me-forever")
+
     def test_backlog_status_returns_active_project_id(self) -> None:
         res = self.client.get("/api/studio/backlog/status")
         self.assertEqual(res.status_code, 200, res.text)
@@ -319,10 +413,15 @@ class AppFlowTests(unittest.TestCase):
         self.assertEqual(sync.status_code, 200)
         self.assertIn("job_id", sync.json())
 
-        batch = self.client.post("/api/studio/backlog/run-daily", json={})
+        batch = self.client.post("/api/studio/backlog/run-daily", json={"force": True})
         self.assertNotEqual(batch.status_code, 500, batch.text)
         self.assertEqual(batch.status_code, 200)
         self.assertIn("job_id", batch.json())
+
+        alias = self.client.post("/api/studio/daily-batch", json={"force": True})
+        self.assertNotEqual(alias.status_code, 500, alias.text)
+        self.assertEqual(alias.status_code, 200)
+        self.assertIn("job_id", alias.json())
 
     def test_dashboard_and_frontend_bind_helpers_exist(self) -> None:
         page = self.client.get("/dashboard", follow_redirects=False)
@@ -343,6 +442,8 @@ class AppFlowTests(unittest.TestCase):
         self.assertIn("setActiveCategory(project.category)", dashboard_js)
         self.assertIn("cover_drive_id", dashboard_js)
         self.assertIn("carousel_drive_ids", dashboard_js)
+        self.assertIn('JSON.stringify({ force: true })', review_js)
+        self.assertIn("driveReviewStartBacklogBatch", review_js)
 
 
 def main() -> int:

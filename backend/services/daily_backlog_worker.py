@@ -110,11 +110,50 @@ class DailyBacklogWorker:
     def select_candidates(self, limit: int) -> list[dict[str, Any]]:
         if limit <= 0:
             return []
-        if not self.drive.is_connected():
-            raise DriveNotConnectedError("Google Drive not connected")
 
         skip_ids = list_unbatched_drive_folder_ids()
         candidates: list[dict[str, Any]] = []
+
+        # Prefer already-synced backlog rows the dashboard is showing.
+        from backend.database import list_drive_projects
+
+        for row in list_drive_projects(status="pending_review", limit=200):
+            folder_id = row.get("drive_folder_id")
+            if not folder_id or folder_id in skip_ids:
+                continue
+            package = {
+                "cover_drive_id": row.get("cover_drive_id"),
+                "carousel_drive_ids": row.get("carousel_drive_ids") or [],
+                "reel_drive_ids": row.get("reel_drive_ids") or [],
+                "asset_count": row.get("asset_count") or 0,
+                "warnings": row.get("parse_warnings") or [],
+            }
+            if package.get("warnings"):
+                continue
+            if not package.get("cover_drive_id"):
+                continue
+            if len(package.get("carousel_drive_ids") or []) != POST_2_CAROUSEL_COUNT:
+                continue
+            if not package.get("reel_drive_ids"):
+                continue
+            candidates.append(
+                {
+                    "drive_folder_id": folder_id,
+                    "category": row["category"],
+                    "event_name": row["event_name"],
+                    "modified_time": row.get("synced_at") or "",
+                    "package": package,
+                    "project_id": row["id"],
+                }
+            )
+            skip_ids.add(folder_id)
+            if len(candidates) >= limit:
+                return candidates[:limit]
+
+        if not self.drive.is_connected():
+            if candidates:
+                return candidates[:limit]
+            raise DriveNotConnectedError("Google Drive not connected")
 
         master = self.drive.resolve_master_folder()
         logger.info(
@@ -144,6 +183,10 @@ class DailyBacklogWorker:
                         "package": package,
                     }
                 )
+                if len(candidates) >= limit:
+                    break
+            if len(candidates) >= limit:
+                break
 
         candidates.sort(key=lambda c: (c["modified_time"], c["event_name"]))
         return candidates[:limit]
@@ -227,7 +270,12 @@ class DailyBacklogWorker:
                 progress_cb(msg, pct)
 
         if not DAILY_BACKLOG_ENABLED and not force:
-            return {"skipped": True, "reason": "Daily backlog disabled"}
+            return {
+                "skipped": True,
+                "processed": 0,
+                "reason": "Daily backlog disabled",
+                "message": "Daily backlog is disabled on this server",
+            }
 
         if not self.drive.is_connected():
             raise DriveNotConnectedError("Connect Google Drive before running daily backlog")
@@ -236,8 +284,10 @@ class DailyBacklogWorker:
         if quota <= 0:
             summary = {
                 "skipped": True,
+                "processed": 0,
                 "reason": f"Daily quota reached ({DAILY_BACKLOG_POSTS_PER_DAY}/day)",
                 "remaining_today": 0,
+                "message": f"Daily quota already reached ({DAILY_BACKLOG_POSTS_PER_DAY}/day). Re-run with force to stage more.",
             }
             return summary
 
@@ -247,7 +297,7 @@ class DailyBacklogWorker:
             summary = {
                 "processed": 0,
                 "remaining_today": quota,
-                "message": "No complete unprocessed projects found in Drive",
+                "message": "No complete unprocessed projects found in the Drive backlog",
             }
             return summary
 

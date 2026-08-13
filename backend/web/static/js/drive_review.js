@@ -15,13 +15,14 @@ const driveReview = {
 };
 
 async function driveReviewFetch(path, options = {}) {
+  const { headers: extraHeaders, ...rest } = options;
   const res = await fetch(`/api/studio${path}`, {
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
+    ...rest,
+    headers: { "Content-Type": "application/json", ...(extraHeaders || {}) },
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) throw new Error(data.error || res.statusText || `Request failed (${res.status})`);
   return data;
 }
 
@@ -329,8 +330,12 @@ function driveReviewShowBacklogDetail(project) {
 
   const approveBtn = driveReviewEl("drive-approve-btn");
   if (approveBtn) {
-    approveBtn.disabled = !project.package_complete;
+    approveBtn.disabled = false;
     approveBtn.dataset.projectId = project.id;
+    approveBtn.dataset.complete = project.package_complete ? "1" : "0";
+    approveBtn.title = project.package_complete
+      ? "Build the Ideal Row and publish"
+      : "Folder is missing cover, 8 carousel photos, or reel media";
   }
 }
 
@@ -363,6 +368,7 @@ async function driveReviewStartSync() {
   driveReviewSetStatus("Queuing Drive sync…", "backlog");
   try {
     const data = await driveReviewFetch("/drive/sync", { method: "POST", body: "{}" });
+    if (!data.job_id) throw new Error(data.error || "Drive sync did not start");
     driveReview.syncJobId = data.job_id;
     driveReviewPollJob("sync");
   } catch (err) {
@@ -376,7 +382,13 @@ async function driveReviewStartBacklogBatch() {
   if (btn) btn.disabled = true;
   driveReviewSetStatus("Running daily batch…");
   try {
-    const data = await driveReviewFetch("/backlog/run-daily", { method: "POST", body: "{}" });
+    const data = await driveReviewFetch("/backlog/run-daily", {
+      method: "POST",
+      body: JSON.stringify({ force: true }),
+    });
+    if (!data.job_id) {
+      throw new Error(data.error || "Daily batch did not start");
+    }
     driveReview.backlogJobId = data.job_id;
     driveReviewPollJob("backlog");
   } catch (err) {
@@ -397,22 +409,27 @@ function driveReviewPollJob(kind) {
     if (!jobId) return;
     try {
       const job = await driveReviewFetch(`/jobs/${jobId}`);
-      driveReviewSetStatus(job.message || job.status, statusTarget);
+      const summary = job.meta && job.meta.summary;
+      const summaryMsg =
+        (summary && (summary.message || summary.reason)) || job.message || job.status;
+      driveReviewSetStatus(summaryMsg, statusTarget);
       if (job.status === "completed") {
         clearInterval(driveReview[pollKey]);
         driveReview[pollKey] = null;
         driveReview[jobIdKey] = null;
-        driveReviewEl(btnId).disabled = false;
+        const doneBtn = driveReviewEl(btnId);
+        if (doneBtn) doneBtn.disabled = false;
         await driveReviewRefreshQueues();
         driveReviewSetStatus(
-          kind === "backlog" ? "Daily batch complete" : "Drive sync complete",
+          summaryMsg || (kind === "backlog" ? "Daily batch complete" : "Drive sync complete"),
           statusTarget
         );
       } else if (job.status === "failed") {
         clearInterval(driveReview[pollKey]);
         driveReview[pollKey] = null;
         driveReview[jobIdKey] = null;
-        driveReviewEl(btnId).disabled = false;
+        const failBtn = driveReviewEl(btnId);
+        if (failBtn) failBtn.disabled = false;
         driveReviewSetStatus(job.error || "Job failed", statusTarget);
       }
     } catch (err) {
@@ -424,7 +441,10 @@ function driveReviewPollJob(kind) {
 async function driveReviewApprovePosting(rerender = false) {
   const btn = rerender ? driveReviewEl("posting-rerender-btn") : driveReviewEl("posting-approve-btn");
   const projectId = btn?.dataset.projectId || driveReview.selectedId;
-  if (!projectId) return;
+  if (!projectId) {
+    driveReviewSetStatus("Select a Review for Posting package first");
+    return;
+  }
 
   const trackId = driveReviewEl("posting-audio-select")?.value || null;
   if (btn) btn.disabled = true;
@@ -473,11 +493,21 @@ async function driveReviewApprovePosting(rerender = false) {
 
 async function driveReviewApproveBacklog() {
   const btn = driveReviewEl("drive-approve-btn");
-  const projectId = btn?.dataset.projectId;
-  if (!projectId) return;
+  const projectId = btn?.dataset.projectId || driveReview.selectedId;
+  if (!projectId) {
+    driveReviewSetStatus("Select a Drive backlog project first", "backlog");
+    return;
+  }
+  if (btn?.dataset.complete === "0") {
+    driveReviewSetStatus(
+      "This folder is missing cover, 8 carousel photos, or reel media — cannot publish yet",
+      "backlog"
+    );
+    return;
+  }
 
   const trackId = driveReviewEl("drive-review-audio-select")?.value || null;
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   driveReviewSetStatus("Building Ideal Row…", "backlog");
 
   try {
@@ -504,16 +534,32 @@ async function driveReviewApproveBacklog() {
     }
   } catch (err) {
     driveReviewSetStatus(err.message, "backlog");
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
   }
 }
 
+let driveReviewBound = false;
+
 function driveReviewInit() {
+  if (driveReviewBound) return;
+  driveReviewBound = true;
   driveReviewEl("drive-sync-btn")?.addEventListener("click", driveReviewStartSync);
-  driveReviewEl("backlog-run-btn")?.addEventListener("click", driveReviewStartBacklogBatch);
-  driveReviewEl("posting-approve-btn")?.addEventListener("click", () => driveReviewApprovePosting(false));
-  driveReviewEl("posting-rerender-btn")?.addEventListener("click", () => driveReviewApprovePosting(true));
-  driveReviewEl("drive-approve-btn")?.addEventListener("click", driveReviewApproveBacklog);
+  driveReviewEl("backlog-run-btn")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    driveReviewStartBacklogBatch();
+  });
+  driveReviewEl("posting-approve-btn")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    driveReviewApprovePosting(false);
+  });
+  driveReviewEl("posting-rerender-btn")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    driveReviewApprovePosting(true);
+  });
+  driveReviewEl("drive-approve-btn")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    driveReviewApproveBacklog();
+  });
   driveReviewLoadAudio();
   driveReviewRefreshQueues().then(() => {
     const params = new URLSearchParams(window.location.search);
@@ -524,4 +570,8 @@ function driveReviewInit() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", driveReviewInit);
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", driveReviewInit);
+} else {
+  driveReviewInit();
+}
