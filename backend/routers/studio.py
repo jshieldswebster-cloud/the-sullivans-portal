@@ -479,7 +479,14 @@ async def drive_oauth_start(request: Request, return_to: Optional[str] = None):
     state = secrets.token_urlsafe(32)
     request.session["drive_oauth_state"] = state
     request.session["drive_oauth_return"] = return_to or "/dashboard"
-    url, code_verifier = svc.oauth_start_url(state=state)
+    try:
+        url, code_verifier = svc.oauth_start_url(state=state)
+    except Exception:
+        logger.exception("Drive OAuth start failed")
+        return JSONResponse(
+            {"error": "Failed to start Google Drive connection. Please try again."},
+            status_code=500,
+        )
     request.session["drive_oauth_code_verifier"] = code_verifier
     return RedirectResponse(url, status_code=302)
 

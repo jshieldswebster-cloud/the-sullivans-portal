@@ -378,7 +378,6 @@ class DriveService:
             access_type="offline",
             prompt="consent",
             state=state,
-            redirect_uri=redirect_uri,
         )
         url = _authorization_url_with_exact_redirect(url, redirect_uri)
         logger.info("Google OAuth redirect_uri=%s", redirect_uri)
@@ -392,7 +391,7 @@ class DriveService:
         flow = self._web_oauth_flow(code_verifier=code_verifier, autogenerate=False)
         redirect_uri = _exact_oauth_redirect_uri()
         flow.redirect_uri = redirect_uri
-        flow.fetch_token(code=code, redirect_uri=redirect_uri)
+        flow.fetch_token(code=code)
         creds = flow.credentials
         _save_oauth_token(
             {
