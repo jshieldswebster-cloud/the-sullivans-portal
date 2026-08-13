@@ -22,6 +22,7 @@ output/*
 !output/debug/.gitkeep
 data/*.db
 data/drive_oauth_token.json
+data/canva_oauth_token.json
 data/drive_index.json
 
 # OS
@@ -35,3 +36,6 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Autonomous test/fix loop artifacts
+.auto_fix_loop/

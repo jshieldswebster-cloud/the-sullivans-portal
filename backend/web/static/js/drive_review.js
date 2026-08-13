@@ -42,6 +42,24 @@ function driveReviewSetStatus(msg, target = "posting") {
   if (el) el.textContent = msg || "";
 }
 
+async function driveReviewRefreshCanvaStatus() {
+  const statusEl = driveReviewEl("canva-connect-status");
+  const btn = driveReviewEl("canva-connect-btn");
+  try {
+    const data = await driveReviewFetch("/canva/status");
+    if (data.connected) {
+      if (statusEl) statusEl.textContent = "Canva connected";
+      if (btn) btn.textContent = "Reconnect Canva";
+    } else if (data.configured) {
+      if (statusEl) statusEl.textContent = "Canva needs authorization";
+    } else if (statusEl) {
+      statusEl.textContent = "";
+    }
+  } catch (_err) {
+    /* Canva status is optional on pages that aren't logged in to studio */
+  }
+}
+
 function postingThumb(project) {
   const local = project.local_previews || {};
   if (local.cover_url) return local.cover_url;
@@ -397,6 +415,68 @@ async function driveReviewStartBacklogBatch() {
   }
 }
 
+function driveReviewParseFolderId(raw) {
+  const value = (raw || "").trim();
+  if (!value) return "";
+  const folderMatch = value.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch) return folderMatch[1];
+  const idMatch = value.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch) return idMatch[1];
+  return value.replace(/[^a-zA-Z0-9_-]/g, "") === value ? value : "";
+}
+
+async function driveReviewProcessFolder(folderId, extra = {}) {
+  const id = driveReviewParseFolderId(folderId);
+  if (!id) {
+    driveReviewSetStatus("Enter a Google Drive folder ID or URL");
+    return;
+  }
+  const btn = driveReviewEl("backlog-folder-go");
+  const browseBtn = driveReviewEl("backlog-browse-btn");
+  if (btn) btn.disabled = true;
+  if (browseBtn) browseBtn.disabled = true;
+  driveReviewSetStatus("Queuing folder for the daily-batch pipeline…");
+  try {
+    const data = await driveReviewFetch("/backlog/process-folder", {
+      method: "POST",
+      body: JSON.stringify({
+        folder_id: id,
+        category: extra.category || driveReviewEl("selected-category")?.value || null,
+        event_name: extra.event_name || extra.name || driveReviewEl("event-name")?.value || null,
+        force: true,
+      }),
+    });
+    if (!data.job_id) throw new Error(data.error || "Folder processing did not start");
+    driveReview.backlogJobId = data.job_id;
+    driveReviewPollJob("backlog");
+  } catch (err) {
+    driveReviewSetStatus(err.message);
+    if (btn) btn.disabled = false;
+    if (browseBtn) browseBtn.disabled = false;
+  }
+}
+
+function driveReviewOpenFolderPicker() {
+  if (!window.DrivePicker || typeof window.DrivePicker.open !== "function") {
+    driveReviewSetStatus("Drive picker is not available");
+    return;
+  }
+  window.DrivePicker.open({
+    mode: "project",
+    category: driveReviewEl("selected-category")?.value || "",
+    eventName: driveReviewEl("event-name")?.value || "",
+    onFolder: (folder) => {
+      const input = driveReviewEl("backlog-folder-id");
+      if (input) input.value = folder.id;
+      driveReviewProcessFolder(folder.id, { name: folder.name });
+    },
+  });
+}
+
+window.onDriveProjectFolder = (folder) => {
+  driveReviewProcessFolder(folder.id, { name: folder.name });
+};
+
 function driveReviewPollJob(kind) {
   const pollKey = kind === "sync" ? "syncPoll" : "backlogPoll";
   const jobIdKey = kind === "sync" ? "syncJobId" : "backlogJobId";
@@ -419,6 +499,10 @@ function driveReviewPollJob(kind) {
         driveReview[jobIdKey] = null;
         const doneBtn = driveReviewEl(btnId);
         if (doneBtn) doneBtn.disabled = false;
+        ["backlog-folder-go", "backlog-browse-btn", "backlog-run-btn"].forEach((id) => {
+          const el = driveReviewEl(id);
+          if (el) el.disabled = false;
+        });
         await driveReviewRefreshQueues();
         driveReviewSetStatus(
           summaryMsg || (kind === "backlog" ? "Daily batch complete" : "Drive sync complete"),
@@ -430,6 +514,10 @@ function driveReviewPollJob(kind) {
         driveReview[jobIdKey] = null;
         const failBtn = driveReviewEl(btnId);
         if (failBtn) failBtn.disabled = false;
+        ["backlog-folder-go", "backlog-browse-btn", "backlog-run-btn"].forEach((id) => {
+          const el = driveReviewEl(id);
+          if (el) el.disabled = false;
+        });
         driveReviewSetStatus(job.error || "Job failed", statusTarget);
       }
     } catch (err) {
@@ -548,6 +636,20 @@ function driveReviewInit() {
     event.preventDefault();
     driveReviewStartBacklogBatch();
   });
+  driveReviewEl("backlog-browse-btn")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    driveReviewOpenFolderPicker();
+  });
+  driveReviewEl("backlog-folder-go")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    driveReviewProcessFolder(driveReviewEl("backlog-folder-id")?.value || "");
+  });
+  driveReviewEl("backlog-folder-id")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      driveReviewProcessFolder(event.target.value || "");
+    }
+  });
   driveReviewEl("posting-approve-btn")?.addEventListener("click", (event) => {
     event.preventDefault();
     driveReviewApprovePosting(false);
@@ -561,11 +663,18 @@ function driveReviewInit() {
     driveReviewApproveBacklog();
   });
   driveReviewLoadAudio();
+  driveReviewRefreshCanvaStatus();
   driveReviewRefreshQueues().then(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("drive") === "connected") {
       driveReviewStartSync();
       driveReviewStartBacklogBatch();
+    }
+    if (params.get("canva") === "connected") {
+      driveReviewSetStatus("Canva connected — drafts will autofill from generated posts");
+    }
+    if (params.get("canva_error")) {
+      driveReviewSetStatus("Canva connect failed: " + params.get("canva_error"));
     }
   });
 }

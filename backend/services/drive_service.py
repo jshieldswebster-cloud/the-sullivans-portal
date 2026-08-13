@@ -67,6 +67,25 @@ ALLOWED_VIDEO_MIMES = {
     "video/webm",
 }
 FOLDER_MIME = "application/vnd.google-apps.folder"
+DRIVE_LIST_PAGE_SIZE = 200
+DRIVE_SCAN_MAX_DEPTH = 6
+SLOT_FOLDER_ALIASES = {
+    "cover": ("cover", "post 1", "post_1", "post1", "hero", "hero shot"),
+    "carousel": ("carousel", "post 2", "post_2", "post2", "details", "decor", "detail"),
+    "reel": ("reel", "post 3", "post_3", "post3", "video", "videos", "clips"),
+}
+MEDIA_BUCKET_NAMES = {
+    "photos",
+    "images",
+    "media",
+    "assets",
+    "originals",
+    "selects",
+    "final",
+    "edited",
+    "output",
+    "exports",
+}
 
 
 def _exact_oauth_redirect_uri() -> str:
@@ -443,6 +462,63 @@ class DriveService:
                 return cat
         return None
 
+    def _slot_from_name(self, folder_name: str) -> str | None:
+        name = folder_name.strip().lower()
+        for slot, aliases in SLOT_FOLDER_ALIASES.items():
+            if name in aliases or any(alias == name or name.startswith(f"{alias} ") for alias in aliases):
+                return slot
+        return None
+
+    def _is_media_bucket(self, folder_name: str) -> bool:
+        name = folder_name.strip().lower()
+        if name in MEDIA_BUCKET_NAMES:
+            return True
+        return self._slot_from_name(name) is not None
+
+    def _drive_list_all(self, *, q: str, file_fields: str, page_size: int = DRIVE_LIST_PAGE_SIZE) -> list[dict[str, Any]]:
+        """Paginate Drive files.list, including items from shared drives."""
+        service = self._get_service()
+        items: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {
+                "q": q,
+                "spaces": "drive",
+                "fields": f"nextPageToken, files({file_fields})",
+                "pageSize": page_size,
+                "supportsAllDrives": True,
+                "includeItemsFromAllDrives": True,
+            }
+            if page_token:
+                kwargs["pageToken"] = page_token
+            results = service.files().list(**kwargs).execute()
+            items.extend(results.get("files") or [])
+            page_token = results.get("nextPageToken")
+            if not page_token:
+                break
+        return items
+
+    def _normalize_media_file(self, raw: dict[str, Any], *, parent_id: str | None = None) -> dict[str, Any] | None:
+        mime = raw.get("mimeType") or ""
+        if mime == FOLDER_MIME:
+            return None
+        if mime == "application/vnd.google-apps.photo":
+            mime = "image/jpeg"
+        is_image = mime.startswith(IMAGE_MIME_PREFIX) or mime in ALLOWED_IMAGE_MIMES
+        is_video = mime.startswith(VIDEO_MIME_PREFIX) or mime in ALLOWED_VIDEO_MIMES
+        if not is_image and not is_video:
+            return None
+        return {
+            "id": raw["id"],
+            "name": raw.get("name") or raw["id"],
+            "mime_type": mime,
+            "kind": "video" if is_video else "image",
+            "size": int(raw.get("size") or 0),
+            "modified_time": raw.get("modifiedTime"),
+            "thumbnail_link": raw.get("thumbnailLink"),
+            "parent_id": parent_id,
+        }
+
     def list_master_categories(self) -> list[dict[str, Any]]:
         """Subfolders of the master folder that map to event categories."""
         master_id = self._master_folder_id()
@@ -455,61 +531,155 @@ class DriveService:
         return matched
 
     def list_project_folders(self, category_folder_id: str) -> list[dict[str, Any]]:
-        """Client project folders inside an event-type category folder."""
-        return self.list_folders(parent_id=category_folder_id)
+        """Client project folders inside an event-type category folder (recursive)."""
+        return self.discover_project_folders(category_folder_id)
 
-    def list_folder_assets(self, folder_id: str) -> list[dict[str, Any]]:
-        """Images and videos in a folder, sorted by modified time then name."""
-        service = self._get_service()
-        q = f"'{folder_id}' in parents and trashed = false"
-        results = (
-            service.files()
-            .list(
-                q=q,
-                spaces="drive",
-                fields="files(id, name, mimeType, size, modifiedTime, thumbnailLink)",
-                orderBy="modifiedTime",
-                pageSize=500,
-            )
-            .execute()
+    def discover_project_folders(
+        self,
+        parent_id: str | None = None,
+        *,
+        category: str | None = None,
+        max_depth: int = DRIVE_SCAN_MAX_DEPTH,
+    ) -> list[dict[str, Any]]:
+        """Walk Drive recursively and return folders that look like client events."""
+        root = parent_id or self._master_folder_id()
+        found: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        def walk(folder_id: str, inferred_cat: str | None, depth: int, names: list[str]) -> None:
+            if folder_id in seen or depth > max_depth:
+                return
+            seen.add(folder_id)
+            children = self.list_folders(parent_id=folder_id)
+            files = self._list_direct_media(folder_id)
+            slot_folders = [c for c in children if self._slot_from_name(c["name"])]
+            media_buckets = [
+                c for c in children if self._is_media_bucket(c["name"]) and c not in slot_folders
+            ]
+            nest_folders = [
+                c
+                for c in children
+                if c not in slot_folders and not self._is_media_bucket(c["name"])
+            ]
+            has_packaged_media = bool(files or slot_folders or media_buckets)
+            is_project = has_packaged_media and (bool(slot_folders or media_buckets) or not nest_folders)
+            if is_project and depth > 0:
+                event_name = names[-1] if names else (self.get_folder_meta(folder_id) or {}).get("name") or folder_id
+                cat = inferred_cat
+                if not cat:
+                    for label in reversed(names + [event_name]):
+                        cat = self._match_category(label)
+                        if cat:
+                            break
+                found.append(
+                    {
+                        "id": folder_id,
+                        "name": event_name,
+                        "modified_time": "",
+                        "parent_id": names[-2] if len(names) > 1 else parent_id,
+                        "category": cat,
+                    }
+                )
+                return
+            for child in nest_folders:
+                child_cat = self._match_category(child["name"]) or inferred_cat
+                walk(child["id"], child_cat, depth + 1, names + [child["name"]])
+
+        root_meta = self.get_folder_meta(root)
+        root_name = (root_meta or {}).get("name") or ""
+        start_cat = category or self._match_category(root_name)
+        walk(root, start_cat, 0, [root_name] if root_name else [])
+        logger.info("Discovered %d event folders under %s", len(found), root)
+        return found
+
+    def _list_direct_media(self, folder_id: str) -> list[dict[str, Any]]:
+        rows = self._drive_list_all(
+            q=f"'{folder_id}' in parents and trashed = false and mimeType != '{FOLDER_MIME}'",
+            file_fields="id, name, mimeType, size, modifiedTime, thumbnailLink",
+            page_size=500,
         )
+        out: list[dict[str, Any]] = []
+        for raw in rows:
+            item = self._normalize_media_file(raw, parent_id=folder_id)
+            if item:
+                out.append(item)
+        return out
+
+    def list_folder_assets(
+        self,
+        folder_id: str,
+        *,
+        recursive: bool = True,
+        max_depth: int = DRIVE_SCAN_MAX_DEPTH,
+    ) -> list[dict[str, Any]]:
+        """Images and videos in a folder (optionally including nested folders)."""
         assets: list[dict[str, Any]] = []
-        for f in results.get("files", []):
-            mime = f.get("mimeType", "")
-            if mime == FOLDER_MIME:
-                continue
-            if mime == "application/vnd.google-apps.photo":
-                mime = "image/jpeg"
-            is_image = mime.startswith(IMAGE_MIME_PREFIX) or mime in ALLOWED_IMAGE_MIMES
-            is_video = mime.startswith(VIDEO_MIME_PREFIX) or mime in ALLOWED_VIDEO_MIMES
-            if not is_image and not is_video:
-                continue
-            assets.append(
-                {
-                    "id": f["id"],
-                    "name": f["name"],
-                    "mime_type": mime,
-                    "kind": "video" if is_video else "image",
-                    "size": int(f.get("size") or 0),
-                    "modified_time": f.get("modifiedTime"),
-                    "thumbnail_link": f.get("thumbnailLink"),
-                }
+        seen_files: set[str] = set()
+        seen_folders: set[str] = set()
+
+        def walk(current_id: str, depth: int, slot: str | None) -> None:
+            if current_id in seen_folders or depth > max_depth:
+                return
+            seen_folders.add(current_id)
+            rows = self._drive_list_all(
+                q=f"'{current_id}' in parents and trashed = false",
+                file_fields="id, name, mimeType, size, modifiedTime, thumbnailLink",
+                page_size=500,
             )
-        assets.sort(key=lambda a: (a.get("modified_time") or "", a.get("name") or ""))
+            for raw in rows:
+                mime = raw.get("mimeType") or ""
+                if mime == FOLDER_MIME:
+                    if not recursive:
+                        continue
+                    child_slot = self._slot_from_name(raw.get("name") or "") or slot
+                    walk(raw["id"], depth + 1, child_slot)
+                    continue
+                item = self._normalize_media_file(raw, parent_id=current_id)
+                if not item or item["id"] in seen_files:
+                    continue
+                seen_files.add(item["id"])
+                if slot:
+                    item["slot"] = slot
+                assets.append(item)
+
+        walk(folder_id, 0, None)
+        assets.sort(key=lambda a: (a.get("slot") or "", a.get("modified_time") or "", a.get("name") or ""))
         return assets
 
     def parse_project_folder(self, folder_id: str) -> dict[str, Any]:
-        """Split flat client folder assets into cover / carousel / reel slots."""
-        assets = self.list_folder_assets(folder_id)
+        """Split client folder assets into cover / carousel / reel slots (recursive)."""
+        assets = self.list_folder_assets(folder_id, recursive=True)
         images = [a for a in assets if a["kind"] == "image"]
         videos = [a for a in assets if a["kind"] == "video"]
         warnings: list[str] = []
+
+        slotted_cover = [a for a in images if a.get("slot") == "cover"]
+        slotted_carousel = [a for a in images if a.get("slot") == "carousel"]
+        slotted_reel = [a for a in images if a.get("slot") == "reel"] + [
+            a for a in videos if a.get("slot") in (None, "reel")
+        ]
+        unslotted_images = [a for a in images if not a.get("slot")]
+        unslotted_videos = [a for a in videos if not a.get("slot")]
 
         cover_id: str | None = None
         carousel_ids: list[str] = []
         reel_ids: list[str] = []
 
-        if not images and not videos:
+        if slotted_cover or slotted_carousel or slotted_reel:
+            if slotted_cover:
+                cover_id = slotted_cover[0]["id"]
+            elif unslotted_images:
+                cover_id = unslotted_images[0]["id"]
+                unslotted_images = unslotted_images[1:]
+            carousel_ids = [a["id"] for a in slotted_carousel[:DRIVE_POST_2_COUNT]]
+            if len(carousel_ids) < DRIVE_POST_2_COUNT:
+                need = DRIVE_POST_2_COUNT - len(carousel_ids)
+                carousel_ids.extend([a["id"] for a in unslotted_images[:need]])
+                unslotted_images = unslotted_images[need:]
+            reel_ids = [a["id"] for a in slotted_reel] + [a["id"] for a in unslotted_images] + [
+                a["id"] for a in unslotted_videos
+            ]
+        elif not images and not videos:
             warnings.append("No photos or videos found in project folder")
         elif not images:
             warnings.append("No images found — cover and carousel require photos")
@@ -520,17 +690,22 @@ class DriveService:
             reel_image_ids = [img["id"] for img in images[1 + DRIVE_POST_2_COUNT :]]
             reel_ids = reel_image_ids + [v["id"] for v in videos]
 
-            if len(images) < 1 + DRIVE_POST_2_COUNT:
-                warnings.append(
-                    f"Carousel requires {DRIVE_POST_2_COUNT} photos after cover "
-                    f"(found {max(0, len(images) - 1)})"
-                )
-            if not reel_ids:
-                warnings.append("Post 3 reel requires at least one remaining photo or video")
+        if cover_id and len(carousel_ids) >= DRIVE_POST_2_COUNT and not reel_ids:
+            reel_ids = [carousel_ids[-1]]
+            warnings.append("Reel reused last carousel photo (no leftover media)")
+        if not cover_id:
+            warnings.append("No cover photo found")
+        if len(carousel_ids) < DRIVE_POST_2_COUNT:
+            warnings.append(
+                f"Carousel requires {DRIVE_POST_2_COUNT} photos after cover "
+                f"(found {len(carousel_ids)})"
+            )
+        if not reel_ids:
+            warnings.append("Post 3 reel requires at least one remaining photo or video")
 
         return {
             "cover_drive_id": cover_id,
-            "carousel_drive_ids": carousel_ids,
+            "carousel_drive_ids": carousel_ids[:DRIVE_POST_2_COUNT],
             "reel_drive_ids": reel_ids,
             "asset_count": len(assets),
             "image_count": len(images),
@@ -686,7 +861,6 @@ class DriveService:
     # ── Browse ──────────────────────────────────────────────────────────────
 
     def list_folders(self, *, parent_id: str | None = None) -> list[dict[str, Any]]:
-        service = self._get_service()
         if parent_id:
             parent = parent_id
         else:
@@ -694,29 +868,21 @@ class DriveService:
                 parent = self._master_folder_id()
             except Exception:
                 parent = GOOGLE_DRIVE_MASTER_FOLDER_ID or GOOGLE_DRIVE_ROOT_FOLDER_ID
-        q = (
-            f"'{parent}' in parents and mimeType = '{FOLDER_MIME}' and trashed = false"
+        rows = self._drive_list_all(
+            q=f"'{parent}' in parents and mimeType = '{FOLDER_MIME}' and trashed = false",
+            file_fields="id, name, modifiedTime, parents",
         )
-        results = (
-            service.files()
-            .list(
-                q=q,
-                spaces="drive",
-                fields="files(id, name, modifiedTime, parents)",
-                orderBy="name",
-                pageSize=200,
-            )
-            .execute()
-        )
-        return [
+        folders = [
             {
                 "id": f["id"],
                 "name": f["name"],
                 "modified_time": f.get("modifiedTime"),
                 "parent_id": parent,
             }
-            for f in results.get("files", [])
+            for f in rows
         ]
+        folders.sort(key=lambda f: (f.get("name") or "").lower())
+        return folders
 
     def search_category_folders(self, category: str) -> list[dict[str, Any]]:
         """Find the category folder under the VV LUXE STUDIO master root."""
@@ -726,74 +892,34 @@ class DriveService:
             master_id = self._master_folder_id()
         except Exception:
             master_id = GOOGLE_DRIVE_MASTER_FOLDER_ID or GOOGLE_DRIVE_ROOT_FOLDER_ID
-        service = self._get_service()
-        q = (
-            f"'{master_id}' in parents and mimeType = '{FOLDER_MIME}' "
-            f"and trashed = false and name = '{category}'"
-        )
-        results = (
-            service.files()
-            .list(
-                q=q,
-                spaces="drive",
-                fields="files(id, name, modifiedTime, parents)",
-                orderBy="name",
-                pageSize=20,
-            )
-            .execute()
-        )
         out: list[dict[str, Any]] = []
-        for f in results.get("files", []):
-            out.append(
-                {
-                    "id": f["id"],
-                    "name": f["name"],
-                    "modified_time": f.get("modifiedTime"),
-                    "category": category,
-                }
-            )
-        if out:
-            return out
         for folder in self.list_folders(parent_id=master_id):
             if self._match_category(folder["name"]) == category:
-                out.append({**folder, "category": category, "name": category})
+                out.append({**folder, "category": category})
+        if out:
+            return out
+        # Category folder may be nested — return matching discovered projects.
+        for proj in self.discover_project_folders(master_id, category=category):
+            if proj.get("category") == category:
+                out.append({**proj, "category": category})
         return out
 
     def list_images(self, folder_id: str) -> list[dict[str, Any]]:
-        service = self._get_service()
-        q = (
-            f"'{folder_id}' in parents and trashed = false and "
-            f"(mimeType contains '{IMAGE_MIME_PREFIX}' or "
-            f"mimeType = 'application/vnd.google-apps.photo')"
-        )
-        results = (
-            service.files()
-            .list(
-                q=q,
-                spaces="drive",
-                fields="files(id, name, mimeType, size, modifiedTime, thumbnailLink)",
-                orderBy="name",
-                pageSize=500,
-            )
-            .execute()
-        )
         files = []
-        for f in results.get("files", []):
-            mime = f.get("mimeType", "")
-            if mime == "application/vnd.google-apps.photo":
-                mime = "image/jpeg"
-            if not mime.startswith(IMAGE_MIME_PREFIX) and mime not in ALLOWED_IMAGE_MIMES:
+        for asset in self.list_folder_assets(folder_id, recursive=False):
+            if asset["kind"] != "image":
                 continue
             files.append(
                 {
-                    "id": f["id"],
-                    "name": f["name"],
-                    "mime_type": mime,
-                    "size": int(f.get("size") or 0),
-                    "modified_time": f.get("modifiedTime"),
-                    "thumbnail_link": f.get("thumbnailLink"),
+                    "id": asset["id"],
+                    "name": asset["name"],
+                    "mime_type": asset["mime_type"],
+                    "size": asset.get("size") or 0,
+                    "modified_time": asset.get("modified_time"),
+                    "thumbnail_link": asset.get("thumbnail_link"),
                 }
             )
+        files.sort(key=lambda f: (f.get("name") or "").lower())
         return files
 
     def get_folder_meta(self, folder_id: str) -> dict[str, Any] | None:
@@ -801,13 +927,37 @@ class DriveService:
         try:
             meta = (
                 service.files()
-                .get(fileId=folder_id, fields="id, name, parents, mimeType")
+                .get(fileId=folder_id, fields="id, name, parents, mimeType", supportsAllDrives=True)
                 .execute()
             )
             return meta
         except Exception as exc:
             logger.warning("Drive folder meta failed for %s: %s", folder_id, exc)
             return None
+
+    def resolve_event_context(self, folder_id: str) -> dict[str, Any]:
+        """Name + inferred category for a Drive folder (walks parents)."""
+        meta = self.get_folder_meta(folder_id)
+        if not meta:
+            raise FileNotFoundError(f"Google Drive folder not found: {folder_id}")
+        names = [meta.get("name") or folder_id]
+        category = self._match_category(names[0])
+        parents = list(meta.get("parents") or [])
+        depth = 0
+        while parents and depth < 8 and not category:
+            parent = self.get_folder_meta(parents[0])
+            if not parent:
+                break
+            names.append(parent.get("name") or "")
+            category = self._match_category(parent.get("name") or "")
+            parents = list(parent.get("parents") or [])
+            depth += 1
+        return {
+            "id": meta["id"],
+            "name": meta.get("name") or folder_id,
+            "category": category or EVENT_CATEGORIES[0],
+            "mime_type": meta.get("mimeType"),
+        }
 
     def get_file_previews(self, file_ids: list[str]) -> list[dict[str, Any]]:
         if not file_ids:
@@ -821,6 +971,7 @@ class DriveService:
                     .get(
                         fileId=file_id,
                         fields="id, name, mimeType, thumbnailLink, modifiedTime",
+                        supportsAllDrives=True,
                     )
                     .execute()
                 )
@@ -843,7 +994,11 @@ class DriveService:
 
     def _download_file_bytes(self, file_id: str) -> tuple[bytes, str, str]:
         service = self._get_service()
-        meta = service.files().get(fileId=file_id, fields="id, name, mimeType").execute()
+        meta = service.files().get(
+            fileId=file_id,
+            fields="id, name, mimeType",
+            supportsAllDrives=True,
+        ).execute()
         name = meta.get("name") or f"drive_{file_id[:8]}.jpg"
         mime = meta.get("mimeType") or "image/jpeg"
 
@@ -854,7 +1009,7 @@ class DriveService:
             if not name.lower().endswith((".jpg", ".jpeg")):
                 name = Path(name).stem + ".jpg"
         else:
-            request = service.files().get_media(fileId=file_id)
+            request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
 
         buffer = io.BytesIO()
         from googleapiclient.http import MediaIoBaseDownload

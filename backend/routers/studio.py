@@ -55,6 +55,11 @@ from backend.services.drive_service import (
     DriveNotConnectedError,
     DriveService,
 )
+from backend.services.canva_service import (
+    CanvaNotConfiguredError,
+    CanvaNotConnectedError,
+    CanvaService,
+)
 from backend.services.drive_sync_service import DriveSyncService
 from backend.services.daily_backlog_worker import DailyBacklogWorker
 from backend.database import count_running_studio_jobs
@@ -511,6 +516,69 @@ async def drive_oauth_callback(request: Request, code: str = "", state: str = ""
     return RedirectResponse(f"{return_to}{sep}drive=connected", status_code=302)
 
 
+@router.get("/canva/callback")
+async def canva_auth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Canva Developer Portal redirect: https://studio.vvluxe.com/canva/callback."""
+    return await canva_oauth_callback(request, code=code, state=state, error=error)
+
+
+@api.get("/canva/status")
+async def canva_status(request: Request):
+    require_user(request)
+    return CanvaService().status()
+
+
+@api.get("/canva/oauth/start")
+async def canva_oauth_start(request: Request, return_to: Optional[str] = None):
+    require_user(request)
+    svc = CanvaService()
+    if not svc.is_configured():
+        return JSONResponse(
+            {"error": "Canva is not configured. Set CANVA_CLIENT_ID and CANVA_CLIENT_SECRET."},
+            status_code=503,
+        )
+    state = secrets.token_urlsafe(32)
+    request.session["canva_oauth_state"] = state
+    request.session["canva_oauth_return"] = return_to or "/dashboard"
+    try:
+        url, code_verifier = svc.oauth_start_url(state=state)
+    except Exception:
+        logger.exception("Canva OAuth start failed")
+        return JSONResponse(
+            {"error": "Failed to start Canva connection. Please try again."},
+            status_code=500,
+        )
+    request.session["canva_oauth_code_verifier"] = code_verifier
+    return RedirectResponse(url, status_code=302)
+
+
+@api.get("/canva/oauth/callback")
+async def canva_oauth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    if error:
+        return RedirectResponse(f"/dashboard?canva_error={error}", status_code=302)
+    expected = request.session.pop("canva_oauth_state", None)
+    if not expected or not secrets.compare_digest(expected, state or ""):
+        return RedirectResponse("/dashboard?canva_error=invalid_state", status_code=302)
+    if not code:
+        return RedirectResponse("/dashboard?canva_error=no_code", status_code=302)
+    code_verifier = request.session.pop("canva_oauth_code_verifier", None)
+    try:
+        CanvaService().oauth_exchange(code, code_verifier=code_verifier)
+    except Exception:
+        logger.exception("Canva OAuth callback failed")
+        return RedirectResponse("/dashboard?canva_error=exchange_failed", status_code=302)
+    return_to = request.session.pop("canva_oauth_return", "/dashboard")
+    sep = "&" if "?" in return_to else "?"
+    return RedirectResponse(f"{return_to}{sep}canva=connected", status_code=302)
+
+
+@api.post("/canva/disconnect")
+async def canva_disconnect(request: Request):
+    require_user(request)
+    CanvaService().disconnect()
+    return {"disconnected": True}
+
+
 @router.get("/auth/callback")
 async def google_auth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
     """Forced Google OAuth redirect target: https://studio.vvluxe.com/auth/callback."""
@@ -701,6 +769,49 @@ async def backlog_run_daily(request: Request):
         return {"job_id": job.id, "status": job.status, "queued": True}
     except Exception as exc:
         logger.exception("Daily backlog enqueue failed")
+        return JSONResponse({"error": str(exc)}, status_code=502)
+
+
+@api.post("/backlog/process-folder")
+async def backlog_process_folder(request: Request):
+    """Manually stage one Google Drive folder through the daily-batch pipeline."""
+    require_user(request)
+    body = {}
+    if request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+    if not isinstance(body, dict):
+        body = {}
+    folder_id = (body.get("folder_id") or body.get("folder_url") or "").strip()
+    if "folders/" in folder_id:
+        folder_id = folder_id.split("folders/", 1)[1].split("?", 1)[0].split("/", 1)[0]
+    elif "id=" in folder_id:
+        folder_id = folder_id.split("id=", 1)[1].split("&", 1)[0]
+    if not folder_id:
+        return JSONResponse({"error": "folder_id is required"}, status_code=400)
+    category = (body.get("category") or "").strip() or None
+    event_name = (body.get("event_name") or "").strip() or None
+    try:
+        job = montage_jobs.create_typed(
+            "daily_backlog",
+            meta={
+                "requested_by": get_current_user(request),
+                "force": True,
+                "folder_id": folder_id,
+                "category": category,
+                "event_name": event_name,
+            },
+        )
+        return {
+            "job_id": job.id,
+            "status": job.status,
+            "queued": True,
+            "folder_id": folder_id,
+        }
+    except Exception as exc:
+        logger.exception("Manual Drive folder enqueue failed")
         return JSONResponse({"error": str(exc)}, status_code=502)
 
 

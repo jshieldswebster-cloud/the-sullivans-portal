@@ -423,12 +423,33 @@ class AppFlowTests(unittest.TestCase):
         self.assertEqual(alias.status_code, 200)
         self.assertIn("job_id", alias.json())
 
+        missing = self.client.post("/api/studio/backlog/process-folder", json={})
+        self.assertEqual(missing.status_code, 400)
+
+        manual = self.client.post(
+            "/api/studio/backlog/process-folder",
+            json={"folder_id": "https://drive.google.com/drive/folders/1abcFolderXYZ"},
+        )
+        self.assertNotEqual(manual.status_code, 500, manual.text)
+        self.assertEqual(manual.status_code, 200)
+        self.assertIn("job_id", manual.json())
+        self.assertEqual(manual.json().get("folder_id"), "1abcFolderXYZ")
+
+        canva = self.client.get("/api/studio/canva/status")
+        self.assertEqual(canva.status_code, 200, canva.text)
+        self.assertIn("configured", canva.json())
+        self.assertIn("redirect_uri", canva.json())
+
     def test_dashboard_and_frontend_bind_helpers_exist(self) -> None:
         page = self.client.get("/dashboard", follow_redirects=False)
         self.assertIn(page.status_code, (200, 302))
         if page.status_code == 200:
             html = page.text
             self.assertIn('id="event-name"', html)
+            self.assertIn('id="backlog-browse-btn"', html)
+            self.assertIn('id="backlog-folder-id"', html)
+            self.assertIn('id="canva-connect-btn"', html)
+            self.assertIn("Connect Canva", html)
             self.assertIn("drive-review-grid", html)
             self.assertNotIn("Internal Server Error", html)
 
@@ -444,10 +465,237 @@ class AppFlowTests(unittest.TestCase):
         self.assertIn("carousel_drive_ids", dashboard_js)
         self.assertIn('JSON.stringify({ force: true })', review_js)
         self.assertIn("driveReviewStartBacklogBatch", review_js)
+        self.assertIn("driveReviewProcessFolder", review_js)
+        self.assertIn("/backlog/process-folder", review_js)
+        self.assertIn('mode: "project"', review_js)
+        self.assertIn("driveReviewRefreshCanvaStatus", review_js)
+        self.assertIn("/canva/status", review_js)
+
+    def test_parse_project_reuses_last_carousel_when_no_reel_media(self) -> None:
+        from backend.services.drive_service import DRIVE_POST_2_COUNT, DriveService
+
+        images = [
+            {
+                "id": f"img-{i}",
+                "name": f"{i:02d}.jpg",
+                "kind": "image",
+                "modified_time": f"2026-01-{i+1:02d}",
+            }
+            for i in range(1 + DRIVE_POST_2_COUNT)
+        ]
+        svc = DriveService()
+        with patch.object(svc, "list_folder_assets", return_value=images):
+            package = svc.parse_project_folder("folder-nine-photos")
+        self.assertEqual(package["cover_drive_id"], "img-0")
+        self.assertEqual(len(package["carousel_drive_ids"]), DRIVE_POST_2_COUNT)
+        self.assertTrue(package["reel_drive_ids"])
+        self.assertEqual(package["reel_drive_ids"][0], package["carousel_drive_ids"][-1])
+
+
+class CloudPipelineTests(unittest.TestCase):
+    """Drive backlog worker helpers: package completeness, error patches, Canva send."""
+
+    def test_classify_error_maps_to_patches(self) -> None:
+        from backend.services.canva_service import CanvaNotConfiguredError
+        from backend.services.drive_service import DriveNotConnectedError
+        from backend.workers.cloud_pipeline_worker import classify_error
+
+        self.assertEqual(classify_error(DriveNotConnectedError("nope")), "drive_auth")
+        self.assertEqual(classify_error(CanvaNotConfiguredError("missing")), "canva_config")
+        self.assertEqual(classify_error(RuntimeError("Folder is not ready to stage")), "incomplete_package")
+        self.assertEqual(classify_error(RuntimeError("Canva unauthorized (401)")), "canva_auth")
+        self.assertEqual(classify_error(RuntimeError("timed out waiting")), "backoff")
+        self.assertEqual(classify_error(RuntimeError("unexpected boom")), "retry")
+
+    def test_already_sent_to_canva(self) -> None:
+        from backend.workers.cloud_pipeline_worker import already_sent_to_canva
+
+        self.assertFalse(already_sent_to_canva({}))
+        self.assertFalse(already_sent_to_canva({"local_paths": {"canva": {"complete": False}}}))
+        self.assertTrue(
+            already_sent_to_canva(
+                {"local_paths": {"canva": {"sent_at": "2026-08-13T00:00:00Z", "complete": True}}}
+            )
+        )
+
+    def test_collect_package_files_and_canva_connect(self) -> None:
+        from backend.services.canva_service import CanvaNotConfiguredError, CanvaService, collect_package_files
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name) / "Ideal_Row_Posts"
+        post1 = base / "Post_1"
+        post2 = base / "Post_2"
+        carousel = post2 / "carousel"
+        post3 = base / "Post_3"
+        for folder in (post1, post2, carousel, post3):
+            folder.mkdir(parents=True, exist_ok=True)
+        jpeg = (
+            b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+            b"\xff\xd9"
+        )
+        (post1 / "cover.jpg").write_bytes(jpeg)
+        for i in range(1, 9):
+            (post2 / f"photo_{i:02d}.jpg").write_bytes(jpeg)
+        (carousel / "slide_00_title.jpg").write_bytes(jpeg)
+        for i in range(1, 9):
+            (carousel / f"slide_{i:02d}.jpg").write_bytes(jpeg)
+        (post3 / "reel_01.jpg").write_bytes(jpeg)
+
+        files = collect_package_files("Weddings", "Test", staging_path=str(base))
+        self.assertTrue(files["complete"], files["missing"])
+        self.assertEqual(len(files["photos"]), 8)
+        self.assertEqual(len(files["slides"]), 9)
+
+        with self.assertRaises(CanvaNotConfiguredError):
+            CanvaService().send_package(category="Weddings", event_name="Test", files=files)
+
+        class FakeResp:
+            def __init__(self, code: int, payload: dict):
+                self.status_code = code
+                self._payload = payload
+                self.text = json.dumps(payload)
+
+            def json(self):
+                return self._payload
+
+        class FakeClient:
+            def post(self, url, **kwargs):
+                if "oauth/token" in url:
+                    return FakeResp(
+                        200,
+                        {
+                            "access_token": "new-access",
+                            "refresh_token": "rotated-refresh",
+                            "expires_in": 14400,
+                            "token_type": "Bearer",
+                            "scope": "asset:write design:content:write",
+                        },
+                    )
+                if "asset-uploads" in url:
+                    return FakeResp(
+                        200,
+                        {
+                            "job": {
+                                "id": "job-1",
+                                "status": "success",
+                                "asset": {"id": "asset-1", "name": "cover.jpg"},
+                            }
+                        },
+                    )
+                if url.endswith("/autofills"):
+                    return FakeResp(
+                        200,
+                        {
+                            "job": {
+                                "id": "af-1",
+                                "status": "success",
+                                "result": {
+                                    "type": "create_design",
+                                    "design": {
+                                        "id": "draft-1",
+                                        "title": "Test",
+                                        "urls": {"edit_url": "https://canva.com/design/draft-1"},
+                                    },
+                                },
+                            }
+                        },
+                    )
+                if url.endswith("/designs"):
+                    return FakeResp(200, {"design": {"id": "design-1", "title": "Test", "urls": {}}})
+                return FakeResp(400, {"error": url})
+
+            def get(self, url, **kwargs):
+                if "dataset" in url:
+                    return FakeResp(
+                        200,
+                        {
+                            "dataset": {
+                                "cover": {"type": "image"},
+                                "title": {"type": "text"},
+                            }
+                        },
+                    )
+                if "autofills/" in url:
+                    return FakeResp(
+                        200,
+                        {
+                            "job": {
+                                "id": "af-1",
+                                "status": "success",
+                                "result": {
+                                    "design": {"id": "draft-1", "title": "Test", "urls": {}},
+                                },
+                            }
+                        },
+                    )
+                return FakeResp(
+                    200,
+                    {"job": {"id": "job-1", "status": "success", "asset": {"id": "asset-1"}}},
+                )
+
+        svc = CanvaService(client=FakeClient(), access_token="test-token")
+        result = svc.send_package(category="Weddings", event_name="Test", files=files)
+        self.assertEqual(result["channel"], "canva_autofill")
+        self.assertTrue(result["complete"])
+        self.assertTrue(result["assets"])
+        self.assertTrue(result["drafts"])
+
+    def test_canva_oauth_pkce_and_token_refresh(self) -> None:
+        from backend.services import canva_service as canva_mod
+        from backend.services.canva_service import CanvaService
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        token_path = Path(tmp.name) / "canva_oauth_token.json"
+        store: dict = {}
+
+        class FakeResp:
+            def __init__(self, code: int, payload: dict):
+                self.status_code = code
+                self._payload = payload
+                self.text = json.dumps(payload)
+
+            def json(self):
+                return self._payload
+
+        class TokenClient:
+            def post(self, url, **kwargs):
+                return FakeResp(
+                    200,
+                    {
+                        "access_token": "access-2",
+                        "refresh_token": "refresh-2",
+                        "expires_in": 14400,
+                        "token_type": "Bearer",
+                    },
+                )
+
+        with patch.object(canva_mod, "CANVA_CLIENT_ID", "OC-test"), patch.object(
+            canva_mod, "CANVA_CLIENT_SECRET", "cnvca-test"
+        ), patch.object(canva_mod, "CANVA_OAUTH_TOKEN_PATH", token_path), patch.object(
+            canva_mod, "get_studio_setting", lambda key, default=None: store.get(key, default or {})
+        ), patch.object(
+            canva_mod, "set_studio_setting", lambda key, value: store.__setitem__(key, value)
+        ):
+            svc = CanvaService(client=TokenClient())
+            url, verifier = svc.oauth_start_url(state="abc")
+            self.assertIn("code_challenge=", url)
+            self.assertIn("code_challenge_method=s256", url)
+            self.assertIn("client_id=OC-test", url)
+            self.assertIn("redirect_uri=", url)
+            self.assertGreaterEqual(len(verifier), 43)
+            svc.oauth_exchange("auth-code", code_verifier=verifier)
+            self.assertTrue(svc.is_connected())
+            rotated = svc.refresh_access_token(force=True)
+            self.assertTrue(rotated)
 
 
 def main() -> int:
-    suite = unittest.defaultTestLoader.loadTestsFromTestCase(AppFlowTests)
+    loader = unittest.defaultTestLoader
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromTestCase(AppFlowTests))
+    suite.addTests(loader.loadTestsFromTestCase(CloudPipelineTests))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
 

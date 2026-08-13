@@ -12,6 +12,7 @@
     category: "",
     eventName: "",
     onImport: null,
+    onFolder: null,
     stack: [{ id: "root", name: "Drive" }],
     folders: [],
     files: [],
@@ -202,10 +203,19 @@
         els.selectionLabel.textContent = n ? `${n} image(s) selected` : "Select images or use entire folder";
       }
     }
-    if (els.importBtn) els.importBtn.disabled = n === 0 || state.importing;
+    if (els.importBtn) {
+      const hideImport = state.mode === "project";
+      els.importBtn.classList.toggle("hidden", hideImport);
+      els.importBtn.disabled = n === 0 || state.importing || hideImport;
+    }
     if (els.selectFolderBtn) {
-      els.selectFolderBtn.classList.toggle("hidden", state.mode === "single");
+      els.selectFolderBtn.classList.toggle("hidden", state.mode === "single" || state.mode === "project");
       els.selectFolderBtn.disabled = !state.currentFolderId || state.importing;
+    }
+    if (els.processFolderBtn) {
+      const showProcess = state.mode === "project";
+      els.processFolderBtn.classList.toggle("hidden", !showProcess);
+      els.processFolderBtn.disabled = !state.currentFolderId || state.importing;
     }
   }
 
@@ -243,6 +253,10 @@
   }
 
   async function importSelection(useFolder = false) {
+    if (state.mode === "project") {
+      chooseProjectFolder();
+      return;
+    }
     if (!state.eventName.trim()) {
       alert("Enter an event name first.");
       return;
@@ -294,6 +308,21 @@
     }
   }
 
+  function chooseProjectFolder() {
+    if (!state.currentFolderId) {
+      alert("Open a Drive folder first, then click Process this folder.");
+      return;
+    }
+    const folder = {
+      id: state.currentFolderId,
+      name: state.stack.length ? state.stack[state.stack.length - 1].name : "Drive folder",
+    };
+    closeModal();
+    if (typeof state.onFolder === "function") {
+      state.onFolder(folder);
+    }
+  }
+
   function openModal(options) {
     state.mode = options.mode || "multi";
     state.maxFiles =
@@ -301,11 +330,18 @@
     state.category = options.category || "";
     state.eventName = options.eventName || "";
     state.onImport = options.onImport || null;
+    state.onFolder = options.onFolder || null;
     state.stack = [{ id: "root", name: "Drive" }];
     state.selectedFileIds.clear();
 
+    const title = document.getElementById("drive-modal-title");
+    if (title) {
+      title.textContent = state.mode === "project" ? "Select an event folder" : "Browse Google Drive";
+    }
+
     els.backdrop.classList.remove("hidden");
     els.backdrop.setAttribute("aria-hidden", "false");
+    updateSelectionLabel();
 
     refreshStatus().then((status) => {
       if (status?.categories) renderCategoryChips(status.categories);
@@ -328,6 +364,7 @@
     els.categoryChips = $("drive-category-chips");
     els.importBtn = $("drive-import-btn");
     els.selectFolderBtn = $("drive-select-folder-btn");
+    els.processFolderBtn = $("drive-process-folder-btn");
     els.selectionLabel = $("drive-selection-label");
 
     $("drive-modal-close")?.addEventListener("click", closeModal);
@@ -336,6 +373,7 @@
     });
     els.importBtn?.addEventListener("click", () => importSelection(false));
     els.selectFolderBtn?.addEventListener("click", () => importSelection(true));
+    els.processFolderBtn?.addEventListener("click", chooseProjectFolder);
 
     document.querySelectorAll("[data-drive-connect]").forEach((btn) => {
       btn.addEventListener("click", () => connectDrive(btn.dataset.returnTo));

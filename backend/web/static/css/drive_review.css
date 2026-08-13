@@ -30,6 +30,21 @@
   align-items: center;
 }
 
+.drive-manual-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 1rem;
+}
+
+.drive-folder-id-input {
+  flex: 1;
+  min-width: 16rem;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.75rem;
+}
+
 .drive-sync-btn {
   padding: 0.5rem 1rem;
   border-radius: 9999px;

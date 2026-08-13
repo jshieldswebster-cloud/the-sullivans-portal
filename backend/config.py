@@ -27,17 +27,22 @@ def _load_env_file() -> None:
 
 
 _load_env_file()
+def _env_path(key: str, default: Path) -> Path:
+    raw = (os.getenv(key) or "").strip()
+    return Path(raw) if raw else default
+
+
 BACKEND_DIR = ROOT_DIR / "backend"
-DATA_DIR = ROOT_DIR / "data"
-UPLOADS_DIR = ROOT_DIR / "uploads"
-OUTPUT_DIR = ROOT_DIR / "output"
+DATA_DIR = _env_path("DATA_DIR", ROOT_DIR / "data")
+UPLOADS_DIR = _env_path("UPLOADS_DIR", ROOT_DIR / "uploads")
+OUTPUT_DIR = _env_path("OUTPUT_DIR", ROOT_DIR / "output")
 ASSETS_DIR = ROOT_DIR / "assets"
 
 VIDEOS_DIR = OUTPUT_DIR / "videos"
 CAROUSELS_DIR = OUTPUT_DIR / "carousels"
 CAPTIONS_DIR = OUTPUT_DIR / "captions"
 
-DATABASE_PATH = DATA_DIR / "vv_luxe.db"
+DATABASE_PATH = _env_path("DATABASE_PATH", DATA_DIR / "vv_luxe.db")
 
 FONTS_DIR = ASSETS_DIR / "fonts"
 LOGOS_DIR = ASSETS_DIR / "logos"
@@ -255,6 +260,43 @@ DAILY_BACKLOG_POSTS_PER_DAY = int(os.getenv("DAILY_BACKLOG_POSTS_PER_DAY", "3"))
 DAILY_BACKLOG_ENABLED = os.getenv("DAILY_BACKLOG_ENABLED", "1").lower() in ("1", "true", "yes")
 DAILY_BACKLOG_RUN_HOUR_UTC = int(os.getenv("DAILY_BACKLOG_RUN_HOUR_UTC", "14"))  # 6 AM PT ≈ 14 UTC
 DAILY_BACKLOG_SETTINGS_KEY = "daily_backlog_state"
+
+# Render / cloud pipeline worker — Drive backlog → 3-post package → Canva
+CLOUD_WORKER_POLL_SEC = int(os.getenv("CLOUD_WORKER_POLL_SEC", "300"))
+CLOUD_WORKER_MAX_PER_TICK = int(os.getenv("CLOUD_WORKER_MAX_PER_TICK", "5"))
+CLOUD_WORKER_EVENT_RETRY_SEC = float(os.getenv("CLOUD_WORKER_EVENT_RETRY_SEC", "8"))
+CLOUD_WORKER_EVENT_MAX_ATTEMPTS = int(os.getenv("CLOUD_WORKER_EVENT_MAX_ATTEMPTS", "0"))  # 0 = until success
+CLOUD_WORKER_REEL_WAIT_SEC = float(os.getenv("CLOUD_WORKER_REEL_WAIT_SEC", "90"))
+CLOUD_WORKER_SETTINGS_KEY = "cloud_pipeline_worker"
+CLOUD_WORKER_ERROR_LOG_KEY = "cloud_pipeline_errors"
+
+# Canva Connect API — OAuth PKCE + autofill drafts
+# Register this exact redirect URL in the Canva Developer Portal (no trailing slash).
+CANVA_API_BASE = os.getenv("CANVA_API_BASE", "https://api.canva.com/rest/v1").rstrip("/")
+CANVA_AUTH_URI = os.getenv("CANVA_AUTH_URI", "https://www.canva.com/api/oauth/authorize")
+CANVA_TOKEN_URL = os.getenv("CANVA_TOKEN_URL", "https://api.canva.com/rest/v1/oauth/token")
+CANVA_REDIRECT_URI = os.getenv(
+    "CANVA_REDIRECT_URI",
+    "https://studio.vvluxe.com/canva/callback",
+).strip().rstrip("/")
+CANVA_CLIENT_ID = os.getenv("CANVA_CLIENT_ID", "")
+CANVA_CLIENT_SECRET = os.getenv("CANVA_CLIENT_SECRET", "")
+CANVA_ACCESS_TOKEN = os.getenv("CANVA_ACCESS_TOKEN", "")
+CANVA_REFRESH_TOKEN = os.getenv("CANVA_REFRESH_TOKEN", "")
+CANVA_WEBHOOK_URL = os.getenv("CANVA_WEBHOOK_URL", "")
+CANVA_OAUTH_SETTINGS_KEY = "canva_oauth"
+CANVA_OAUTH_TOKEN_PATH = DATA_DIR / "canva_oauth_token.json"
+# Access tokens last 4 hours; refresh in the background before they lapse.
+CANVA_TOKEN_REFRESH_INTERVAL_SEC = int(os.getenv("CANVA_TOKEN_REFRESH_INTERVAL_SEC", "5400"))
+CANVA_SCOPES = os.getenv(
+    "CANVA_SCOPES",
+    "asset:read asset:write design:content:write design:meta:read "
+    "brandtemplate:content:read brandtemplate:meta:read",
+)
+CANVA_BRAND_TEMPLATE_ID = os.getenv("CANVA_BRAND_TEMPLATE_ID", "")
+CANVA_BRAND_TEMPLATE_POST2_ID = os.getenv("CANVA_BRAND_TEMPLATE_POST2_ID", "")
+CANVA_BRAND_TEMPLATE_POST3_ID = os.getenv("CANVA_BRAND_TEMPLATE_POST3_ID", "")
+CANVA_DESIGN_PRESET = os.getenv("CANVA_DESIGN_PRESET", "instagramPost")
 
 # VV LUXE Studio branding — title + location subtitle
 STUDIO_BRAND_NAME = os.getenv("STUDIO_BRAND_NAME", "VV LUXE Studio")

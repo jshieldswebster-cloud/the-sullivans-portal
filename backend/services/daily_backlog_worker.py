@@ -16,6 +16,7 @@ from backend.config import (
     DAILY_BACKLOG_POSTS_PER_DAY,
     DAILY_BACKLOG_RUN_HOUR_UTC,
     DAILY_BACKLOG_SETTINGS_KEY,
+    EVENT_CATEGORIES,
     GOOGLE_DRIVE_MASTER_FOLDER_ID,
     GOOGLE_DRIVE_MASTER_FOLDER_NAME,
     REVIEW_FOR_POSTING_QUEUE,
@@ -45,9 +46,12 @@ logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, int], None]
 
-_PROCESSED_STATUSES = frozenset(
-    {"review_for_posting", "approved", "published", "processing"}
-)
+def _package_ready(package: dict[str, Any]) -> bool:
+    return bool(
+        package.get("cover_drive_id")
+        and len(package.get("carousel_drive_ids") or []) >= POST_2_CAROUSEL_COUNT
+        and (package.get("reel_drive_ids") or [])
+    )
 
 
 def _utc_now() -> str:
@@ -113,6 +117,7 @@ class DailyBacklogWorker:
 
         skip_ids = list_unbatched_drive_folder_ids()
         candidates: list[dict[str, Any]] = []
+        skipped: list[str] = []
 
         # Prefer already-synced backlog rows the dashboard is showing.
         from backend.database import list_drive_projects
@@ -128,13 +133,8 @@ class DailyBacklogWorker:
                 "asset_count": row.get("asset_count") or 0,
                 "warnings": row.get("parse_warnings") or [],
             }
-            if package.get("warnings"):
-                continue
-            if not package.get("cover_drive_id"):
-                continue
-            if len(package.get("carousel_drive_ids") or []) != POST_2_CAROUSEL_COUNT:
-                continue
-            if not package.get("reel_drive_ids"):
+            if not _package_ready(package):
+                skipped.append(f"{row.get('event_name')}: incomplete package")
                 continue
             candidates.append(
                 {
@@ -157,36 +157,35 @@ class DailyBacklogWorker:
 
         master = self.drive.resolve_master_folder()
         logger.info(
-            "Daily backlog scanning master folder %s (%s)",
+            "Daily backlog scanning master folder %s (%s) recursively",
             master.get("name", GOOGLE_DRIVE_MASTER_FOLDER_NAME),
             master["id"],
         )
-        for cat in self.drive.list_master_categories():
-            for proj in self.drive.list_project_folders(cat["id"]):
-                if proj["id"] in skip_ids:
-                    continue
-                package = self.drive.parse_project_folder(proj["id"])
-                if package.get("warnings"):
-                    continue
-                if not package.get("cover_drive_id"):
-                    continue
-                if len(package.get("carousel_drive_ids") or []) != POST_2_CAROUSEL_COUNT:
-                    continue
-                if not package.get("reel_drive_ids"):
-                    continue
-                candidates.append(
-                    {
-                        "drive_folder_id": proj["id"],
-                        "category": cat["name"],
-                        "event_name": proj["name"],
-                        "modified_time": proj.get("modified_time") or "",
-                        "package": package,
-                    }
-                )
-                if len(candidates) >= limit:
-                    break
+        discovered = self.drive.discover_project_folders(master["id"])
+        logger.info("Daily backlog discovered %d event folders (skipping %d already batched)", len(discovered), len(skip_ids))
+        for proj in discovered:
+            if proj["id"] in skip_ids:
+                continue
+            package = self.drive.parse_project_folder(proj["id"])
+            if not _package_ready(package):
+                reason = "; ".join(package.get("warnings") or ["incomplete"])
+                skipped.append(f"{proj.get('name')}: {reason}")
+                logger.info("Skipping event folder %s — %s", proj.get("name"), reason)
+                continue
+            candidates.append(
+                {
+                    "drive_folder_id": proj["id"],
+                    "category": proj.get("category") or EVENT_CATEGORIES[0],
+                    "event_name": proj["name"],
+                    "modified_time": proj.get("modified_time") or "",
+                    "package": package,
+                }
+            )
             if len(candidates) >= limit:
                 break
+
+        if skipped:
+            logger.info("Daily backlog skipped %d folders: %s", len(skipped), "; ".join(skipped[:12]))
 
         candidates.sort(key=lambda c: (c["modified_time"], c["event_name"]))
         return candidates[:limit]
@@ -257,6 +256,56 @@ class DailyBacklogWorker:
             "event_name": event_name,
             "staging_path": staging_base,
             "reel_job_id": materialized.get("reel_job_id"),
+        }
+
+    def process_folder(
+        self,
+        folder_id: str,
+        *,
+        category: str | None = None,
+        event_name: str | None = None,
+        progress_cb: ProgressCallback | None = None,
+    ) -> dict[str, Any]:
+        """Manually stage one Drive folder through the same pipeline as the daily batch."""
+        def report(msg: str, pct: int) -> None:
+            if progress_cb:
+                progress_cb(msg, pct)
+
+        folder_id = (folder_id or "").strip()
+        if not folder_id:
+            raise ValueError("folder_id is required")
+        if not self.drive.is_connected():
+            raise DriveNotConnectedError("Connect Google Drive before processing a folder")
+
+        report("Resolving Drive folder…", 10)
+        context = self.drive.resolve_event_context(folder_id)
+        category = (category or "").strip() or context["category"]
+        event_name = (event_name or "").strip() or context["name"]
+        if category not in EVENT_CATEGORIES:
+            raise ValueError(f"Invalid category: {category}")
+
+        report(f"Reading {event_name}…", 25)
+        package = self.drive.parse_project_folder(folder_id)
+        if not _package_ready(package):
+            detail = "; ".join(package.get("warnings") or ["incomplete 3-post package"])
+            raise ValueError(f"Folder is not ready to stage: {detail}")
+
+        report(f"Building package for {event_name}…", 45)
+        result = self.process_candidate(
+            {
+                "drive_folder_id": folder_id,
+                "category": category,
+                "event_name": event_name,
+                "package": package,
+            },
+            batch_date=_today_utc(),
+        )
+        report(f"Staged {event_name}", 100)
+        return {
+            "processed": 1,
+            "message": f"Staged {event_name} into Review for Posting",
+            "projects": [result],
+            **result,
         }
 
     def run_daily_batch(
@@ -469,7 +518,17 @@ def run_daily_backlog_job(store: Any, job_id: str) -> None:
 
     try:
         store.update(job_id, status="running", progress=5, message="Starting daily backlog…")
-        summary = worker.run_daily_batch(progress_cb=progress, force=force)
+        meta = job.meta or {}
+        folder_id = (meta.get("folder_id") or "").strip()
+        if folder_id:
+            summary = worker.process_folder(
+                folder_id,
+                category=meta.get("category"),
+                event_name=meta.get("event_name"),
+                progress_cb=progress,
+            )
+        else:
+            summary = worker.run_daily_batch(progress_cb=progress, force=force)
         store.update(
             job_id,
             status="completed",

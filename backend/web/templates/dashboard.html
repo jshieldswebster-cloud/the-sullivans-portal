@@ -32,8 +32,22 @@
           </div>
           <div class="drive-review-actions">
             <span id="posting-queue-status" class="drive-sync-status"></span>
+            <span id="canva-connect-status" class="drive-sync-status"></span>
+            <a href="/api/studio/canva/oauth/start?return_to=/dashboard" id="canva-connect-btn" class="drive-sync-btn drive-sync-btn-secondary">Connect Canva</a>
+            <button type="button" id="backlog-browse-btn" class="drive-sync-btn drive-sync-btn-secondary">Browse Drive</button>
             <button type="button" id="backlog-run-btn" class="drive-sync-btn drive-sync-btn-secondary">Run Daily Batch</button>
           </div>
+        </div>
+        <div class="drive-manual-row">
+          <label class="sr-only" for="backlog-folder-id">Google Drive folder ID</label>
+          <input
+            type="text"
+            id="backlog-folder-id"
+            class="input-luxe drive-folder-id-input"
+            placeholder="Paste a Drive folder ID or URL to process manually"
+            autocomplete="off"
+          />
+          <button type="button" id="backlog-folder-go" class="drive-sync-btn">Process Folder</button>
         </div>
         <p id="posting-queue-empty" class="drive-review-empty hidden">No packages ready for review. The daily worker stages up to 3 complete projects automatically.</p>
         <div id="posting-queue-grid" class="drive-review-grid"></div>

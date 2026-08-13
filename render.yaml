@@ -1,0 +1,65 @@
+# VV Luxe Studio — Render Blueprint
+# Dashboard: New → Blueprint → this file, OR add a Background Worker
+# on the existing service with start command:
+#   python -m backend.workers.cloud_pipeline_worker
+#
+# Persistent disks are per-service on Render (not shared). Point DATA_DIR
+# and UPLOADS_DIR at each service's disk. Copy the same Drive + Canva env
+# vars onto the worker.
+#
+# Required worker env:
+#   GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET
+#   GOOGLE_DRIVE_REFRESH_TOKEN (or service-account JSON)
+#   GOOGLE_DRIVE_MASTER_FOLDER_ID
+#   CANVA_ACCESS_TOKEN  — or CANVA_REFRESH_TOKEN + CANVA_CLIENT_ID + CANVA_CLIENT_SECRET
+#   (optional) CANVA_WEBHOOK_URL as a Zapier/Make fallback
+#   DATA_DIR=/var/data
+#   UPLOADS_DIR=/var/data/uploads
+
+databases: []
+
+services:
+  - type: web
+    name: vv-luxe-studio
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    disk:
+      name: studio-web-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DATA_DIR
+        value: /var/data
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: DATABASE_PATH
+        value: /var/data/vv_luxe.db
+
+  - type: worker
+    name: vv-luxe-pipeline-worker
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m backend.workers.cloud_pipeline_worker
+    disk:
+      name: studio-worker-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DATA_DIR
+        value: /var/data
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      - key: DATABASE_PATH
+        value: /var/data/vv_luxe.db
+      - key: CLOUD_WORKER_POLL_SEC
+        value: "300"
+      - key: CLOUD_WORKER_MAX_PER_TICK
+        value: "5"

@@ -58,22 +58,24 @@ class DriveSyncService:
         upserted = 0
         warnings_total = 0
 
-        for idx, cat in enumerate(categories):
-            pct = 20 + int(60 * idx / max(len(categories), 1))
-            report(f"Scanning {cat['name']}…", pct)
-            for proj in self.drive.list_project_folders(cat["id"]):
-                scanned += 1
-                package = self.drive.parse_project_folder(proj["id"])
-                upsert_drive_project(
-                    self._project_row(
-                        category=cat["name"],
-                        event_name=proj["name"],
-                        folder_id=proj["id"],
-                        package=package,
-                    )
+        projects = self.drive.discover_project_folders(master["id"])
+        total = max(len(projects), 1)
+        for idx, proj in enumerate(projects):
+            scanned += 1
+            pct = 20 + int(60 * idx / total)
+            report(f"Scanning {proj.get('category') or 'folder'} / {proj['name']}…", pct)
+            package = self.drive.parse_project_folder(proj["id"])
+            category = proj.get("category") or EVENT_CATEGORIES[0]
+            upsert_drive_project(
+                self._project_row(
+                    category=category,
+                    event_name=proj["name"],
+                    folder_id=proj["id"],
+                    package=package,
                 )
-                upserted += 1
-                warnings_total += len(package.get("warnings") or [])
+            )
+            upserted += 1
+            warnings_total += len(package.get("warnings") or [])
 
         report("Sync complete", 100)
         summary = {

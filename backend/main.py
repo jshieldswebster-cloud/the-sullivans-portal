@@ -113,6 +113,7 @@ def initialize_models(*, eager: bool = False) -> None:
     from backend.services.studio_state_service import StudioStateService
     from backend.services.daily_backlog_worker import daily_backlog_scheduler
     from backend.services.drive_service import drive_token_refresh_scheduler
+    from backend.services.canva_service import canva_token_refresh_scheduler
 
     AudioLibraryService().bootstrap_tracks()
     StudioStateService().bootstrap()
@@ -126,6 +127,7 @@ def initialize_models(*, eager: bool = False) -> None:
     job_manager.ensure_handlers()
     daily_backlog_scheduler.start()
     drive_token_refresh_scheduler.start()
+    canva_token_refresh_scheduler.start()
     logger.info("Job queue ready (%d workers)", JOB_QUEUE_MAX_WORKERS)
 
     logger.info("PyTorch device: %s", app_state.device)
@@ -157,10 +159,12 @@ async def lifespan(app: FastAPI):
     from backend.services.job_queue import job_manager
     from backend.services.daily_backlog_worker import daily_backlog_scheduler
     from backend.services.drive_service import drive_token_refresh_scheduler
+    from backend.services.canva_service import canva_token_refresh_scheduler
 
     job_manager.shutdown(wait=True)
     daily_backlog_scheduler.stop()
     drive_token_refresh_scheduler.stop()
+    canva_token_refresh_scheduler.stop()
     logger.info("Application shutdown complete")
 
 
